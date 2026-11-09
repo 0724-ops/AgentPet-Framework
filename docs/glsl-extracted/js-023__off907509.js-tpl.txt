@@ -1,0 +1,4 @@
+// source-offset: 907509..908280
+// kind: tpl quote: ` len: 770 js-score: 5
+// ----------------------------------------------------------------
+;class ZQ{constructor(e){R(this,"mesh");R(this,"material");R(this,"geometry");const t=Hb+Gb;this.geometry=new Fo(2*t,2*t).rotateX(-Math.PI/2),this.material=new Bt({name:"shadow receiver",uniforms:{...e.uniforms,Q85:{value:new C},Q133:{value:new j(Hb,Gb)},Q261:{value:new ze(...zB,1)}},vertexShader:QB,fragmentShader:VB,blending:Mr,blendEquation:di,blendSrc:rh,blendDst:oh,depthWrite:!1}),this.mesh=new Xt(this.geometry,this.material),this.mesh.name="shadow receiver",this.mesh.renderOrder=-6,this.mesh.frustumCulled=!1}setCentre(e){this.mesh.position.set(e.x,e.y+BB,e.z),this.material.uniforms.Q85.value.copy(this.mesh.position)}dispose(){this.mesh.removeFromParent(),this.geometry.dispose(),this.material.dispose()}}const BB=.032,Hb=.3,Gb=2.5,zB=[.4452,.4452,.4452],QB=

@@ -1,0 +1,7 @@
+// template literal at char 1104293..1105204  body length 910  glsl-marker-hits 5
+// context before: "n U1(s,e){const t=await Qc(s,i=>{e&&i.lengthComputable&&e(i.loaded/i.total)});Tn(t.scene);const n=t.animations[0];if(!n)throw new Error(`${s} holds no animation`);return n}const H5=\"HGRP/Effect/VFXDsWrite\";function G5(s){return s.userData.shader===H5}const W5="
+// context after : ",X5=`\nuniform sampler2D Q163;uniform vec4 Q285;uniform float Q289,Q286,Q294;uniform float Q297;uniform vec4 Q178;uniform float Q64,Q125,Q124;uniform float Q280;varying vec2 vUv;varying float Q323;voi"
+// ======================================================================
+
+attribute vec3 Q49;uniform float Q157;uniform vec2 Q253;uniform vec4 Q161;varying vec2 vUv;varying float Q323;void main(){mat3 m=mat3(modelMatrix);vec3 R154=vec3(m[0][0],m[1][0],m[2][0]);vec3 r1=vec3(m[0][1],m[1][1],m[2][1]);vec3 r2=vec3(m[0][2],m[1][2],m[2][2]);vec3 R119=1.0/vec3(dot(R154,R154),dot(r1,r1),dot(r2,r2));vec3 n=normalize(m*(normal*R119));vec3 R56=(modelMatrix*vec4(Q49,1.0)).xyz;vec3 v=normalize(cameraPosition-R56);vec3 d=normalize(cross(n,v));vec2 s=normalize((projectionMatrix*viewMatrix*vec4(d,0.0)).xy);s*=vec2(Q253.y/Q253.x,1.0)*Q157;vec4 R219=viewMatrix*modelMatrix*vec4(position,1.0);vec4 clip=projectionMatrix*R219;float k=0.75/min(Q253.x,Q253.y)*clip.w;vec2 R224=s*0.01;vec2 offset=vec2(abs(R224.x)<k?sign(s.x)*k:R224.x,abs(R224.y)<k?sign(s.y)*k:R224.y);gl_Position=vec4(clip.xy+offset,clip.zw);vec2 R214=vec2(uv.x,1.0-uv.y)*Q161.xy+Q161.zw;vUv=vec2(R214.x,1.0-R214.y);Q323=R219.z;}
+

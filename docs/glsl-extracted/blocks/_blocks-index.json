@@ -1,0 +1,942 @@
+[
+  {
+    "i": 0,
+    "name": "block-000__lines49-81.glsl",
+    "a": 49,
+    "z": 81,
+    "start": 312636,
+    "end": 313250,
+    "len": 614,
+    "firstLine": "varying vec3 vWorldDirection;"
+  },
+  {
+    "i": 1,
+    "name": "block-001__lines122-133.glsl",
+    "a": 122,
+    "z": 133,
+    "start": 321971,
+    "end": 322432,
+    "len": 461,
+    "firstLine": "uniform sampler2D alphaMap;"
+  },
+  {
+    "i": 2,
+    "name": "block-002__lines135-172.glsl",
+    "a": 135,
+    "z": 172,
+    "start": 322486,
+    "end": 323864,
+    "len": 1378,
+    "firstLine": "#if defined( USE_CLEARCOAT )"
+  },
+  {
+    "i": 3,
+    "name": "block-003__lines174-182.glsl",
+    "a": 174,
+    "z": 182,
+    "start": 323891,
+    "end": 324193,
+    "len": 302,
+    "firstLine": "uniform sampler2D batchingColorTexture;"
+  },
+  {
+    "i": 4,
+    "name": "block-004__lines211-288.glsl",
+    "a": 211,
+    "z": 288,
+    "start": 325367,
+    "end": 328777,
+    "len": 3410,
+    "firstLine": "vec3 sqrtF0 = sqrt( fresnel0 );"
+  },
+  {
+    "i": 5,
+    "name": "block-005__lines290-338.glsl",
+    "a": 290,
+    "z": 338,
+    "start": 328791,
+    "end": 330636,
+    "len": 1845,
+    "firstLine": "#ifdef ALPHA_TO_COVERAGE"
+  },
+  {
+    "i": 6,
+    "name": "block-006__lines560-568.glsl",
+    "a": 560,
+    "z": 568,
+    "start": 338347,
+    "end": 338738,
+    "len": 391,
+    "firstLine": "#ifdef FLIP_SIDED"
+  },
+  {
+    "i": 7,
+    "name": "block-007__lines571-578.glsl",
+    "a": 571,
+    "z": 578,
+    "start": 338838,
+    "end": 339175,
+    "len": 337,
+    "firstLine": "#ifdef DECODE_VIDEO_TEXTURE_EMISSIVE"
+  },
+  {
+    "i": 8,
+    "name": "block-008__lines586-664.glsl",
+    "a": 586,
+    "z": 664,
+    "start": 339632,
+    "end": 342221,
+    "len": 2589,
+    "firstLine": "#ifdef ENV_WORLDPOS"
+  },
+  {
+    "i": 9,
+    "name": "block-009__lines668-686.glsl",
+    "a": 668,
+    "z": 686,
+    "start": 342302,
+    "end": 342870,
+    "len": 568,
+    "firstLine": "#ifdef FOG_EXP2"
+  },
+  {
+    "i": 10,
+    "name": "block-010__lines689-699.glsl",
+    "a": 689,
+    "z": 699,
+    "start": 342963,
+    "end": 343347,
+    "len": 384,
+    "firstLine": "#ifdef USE_GRADIENTMAP"
+  },
+  {
+    "i": 11,
+    "name": "block-011__lines809-816.glsl",
+    "a": 809,
+    "z": 816,
+    "start": 348100,
+    "end": 348292,
+    "len": 192,
+    "firstLine": "vec3 color;"
+  },
+  {
+    "i": 12,
+    "name": "block-012__lines832-864.glsl",
+    "a": 832,
+    "z": 864,
+    "start": 348852,
+    "end": 350288,
+    "len": 1436,
+    "firstLine": "#ifdef ENVMAP_TYPE_CUBE_UV"
+  },
+  {
+    "i": 13,
+    "name": "block-013__lines1437-1450.glsl",
+    "a": 1437,
+    "z": 1450,
+    "start": 378581,
+    "end": 379001,
+    "len": 420,
+    "firstLine": "#ifdef DECODE_VIDEO_TEXTURE"
+  },
+  {
+    "i": 14,
+    "name": "block-014__lines1458-1468.glsl",
+    "a": 1458,
+    "z": 1468,
+    "start": 379182,
+    "end": 379441,
+    "len": 259,
+    "firstLine": "#if defined( USE_MAP ) || defined( USE_ALPHAMAP )"
+  },
+  {
+    "i": 15,
+    "name": "block-015__lines1472-1474.glsl",
+    "a": 1472,
+    "z": 1474,
+    "start": 379583,
+    "end": 379707,
+    "len": 124,
+    "firstLine": "uniform sampler2D metalnessMap;"
+  },
+  {
+    "i": 16,
+    "name": "block-016__lines1491-1507.glsl",
+    "a": 1491,
+    "z": 1507,
+    "start": 380517,
+    "end": 381322,
+    "len": 805,
+    "firstLine": "if ( morphTargetInfluences[ i ] != 0.0 ) objectNormal += getMorph( gl_VertexID, i, 1 ).xyz * morphTargetInfluences[ i ];"
+  },
+  {
+    "i": 17,
+    "name": "block-017__lines1570-1593.glsl",
+    "a": 1570,
+    "z": 1593,
+    "start": 383378,
+    "end": 384118,
+    "len": 740,
+    "firstLine": "#ifdef USE_TANGENT"
+  },
+  {
+    "i": 18,
+    "name": "block-018__lines1615-1629.glsl",
+    "a": 1615,
+    "z": 1629,
+    "start": 384978,
+    "end": 385414,
+    "len": 436,
+    "firstLine": "uniform sampler2D clearcoatMap;"
+  },
+  {
+    "i": 19,
+    "name": "block-019__lines1727-1729.glsl",
+    "a": 1727,
+    "z": 1729,
+    "start": 389175,
+    "end": 389305,
+    "len": 130,
+    "firstLine": "uniform sampler2D roughnessMap;"
+  },
+  {
+    "i": 20,
+    "name": "block-020__lines1732-1808.glsl",
+    "a": 1732,
+    "z": 1808,
+    "start": 389341,
+    "end": 392463,
+    "len": 3122,
+    "firstLine": "uniform sampler2D spotLightMap[ NUM_SPOT_LIGHT_MAPS ];"
+  },
+  {
+    "i": 21,
+    "name": "block-021__lines1908-1917.glsl",
+    "a": 1908,
+    "z": 1917,
+    "start": 397947,
+    "end": 398258,
+    "len": 311,
+    "firstLine": "#else"
+  },
+  {
+    "i": 22,
+    "name": "block-022__lines1919-1956.glsl",
+    "a": 1919,
+    "z": 1956,
+    "start": 398280,
+    "end": 399622,
+    "len": 1342,
+    "firstLine": "#if NUM_DIR_LIGHT_SHADOWS > 0"
+  },
+  {
+    "i": 23,
+    "name": "block-023__lines2065-2067.glsl",
+    "a": 2065,
+    "z": 2067,
+    "start": 404094,
+    "end": 404218,
+    "len": 124,
+    "firstLine": "uniform sampler2D specularMap;"
+  },
+  {
+    "i": 24,
+    "name": "block-024__lines2187-2242.glsl",
+    "a": 2187,
+    "z": 2242,
+    "start": 408815,
+    "end": 410643,
+    "len": 1828,
+    "firstLine": "uniform float transmission;"
+  },
+  {
+    "i": 25,
+    "name": "block-025__lines2381-2383.glsl",
+    "a": 2381,
+    "z": 2383,
+    "start": 416050,
+    "end": 416130,
+    "len": 80,
+    "firstLine": "uniform mat3 transmissionMapTransform;"
+  },
+  {
+    "i": 26,
+    "name": "block-026__lines2385-2387.glsl",
+    "a": 2385,
+    "z": 2387,
+    "start": 416155,
+    "end": 416285,
+    "len": 130,
+    "firstLine": "uniform mat3 thicknessMapTransform;"
+  },
+  {
+    "i": 27,
+    "name": "block-027__lines2395-2397.glsl",
+    "a": 2395,
+    "z": 2397,
+    "start": 416404,
+    "end": 416470,
+    "len": 66,
+    "firstLine": "uniform mat3 alphaMapTransform;"
+  },
+  {
+    "i": 28,
+    "name": "block-028__lines2399-2401.glsl",
+    "a": 2399,
+    "z": 2401,
+    "start": 416491,
+    "end": 416557,
+    "len": 66,
+    "firstLine": "uniform mat3 lightMapTransform;"
+  },
+  {
+    "i": 29,
+    "name": "block-029__lines2403-2405.glsl",
+    "a": 2403,
+    "z": 2405,
+    "start": 416575,
+    "end": 416635,
+    "len": 60,
+    "firstLine": "uniform mat3 aoMapTransform;"
+  },
+  {
+    "i": 30,
+    "name": "block-030__lines2407-2409.glsl",
+    "a": 2407,
+    "z": 2409,
+    "start": 416655,
+    "end": 416719,
+    "len": 64,
+    "firstLine": "uniform mat3 bumpMapTransform;"
+  },
+  {
+    "i": 31,
+    "name": "block-031__lines2411-2413.glsl",
+    "a": 2411,
+    "z": 2413,
+    "start": 416741,
+    "end": 416809,
+    "len": 68,
+    "firstLine": "uniform mat3 normalMapTransform;"
+  },
+  {
+    "i": 32,
+    "name": "block-032__lines2415-2417.glsl",
+    "a": 2415,
+    "z": 2417,
+    "start": 416837,
+    "end": 416917,
+    "len": 80,
+    "firstLine": "uniform mat3 displacementMapTransform;"
+  },
+  {
+    "i": 33,
+    "name": "block-033__lines2419-2421.glsl",
+    "a": 2419,
+    "z": 2421,
+    "start": 416941,
+    "end": 417013,
+    "len": 72,
+    "firstLine": "uniform mat3 emissiveMapTransform;"
+  },
+  {
+    "i": 34,
+    "name": "block-034__lines2423-2425.glsl",
+    "a": 2423,
+    "z": 2425,
+    "start": 417038,
+    "end": 417112,
+    "len": 74,
+    "firstLine": "uniform mat3 metalnessMapTransform;"
+  },
+  {
+    "i": 35,
+    "name": "block-035__lines2427-2429.glsl",
+    "a": 2427,
+    "z": 2429,
+    "start": 417137,
+    "end": 417211,
+    "len": 74,
+    "firstLine": "uniform mat3 roughnessMapTransform;"
+  },
+  {
+    "i": 36,
+    "name": "block-036__lines2431-2433.glsl",
+    "a": 2431,
+    "z": 2433,
+    "start": 417237,
+    "end": 417313,
+    "len": 76,
+    "firstLine": "uniform mat3 anisotropyMapTransform;"
+  },
+  {
+    "i": 37,
+    "name": "block-037__lines2435-2437.glsl",
+    "a": 2435,
+    "z": 2437,
+    "start": 417338,
+    "end": 417412,
+    "len": 74,
+    "firstLine": "uniform mat3 clearcoatMapTransform;"
+  },
+  {
+    "i": 38,
+    "name": "block-038__lines2439-2441.glsl",
+    "a": 2439,
+    "z": 2441,
+    "start": 417444,
+    "end": 417530,
+    "len": 86,
+    "firstLine": "uniform mat3 clearcoatNormalMapTransform;"
+  },
+  {
+    "i": 39,
+    "name": "block-039__lines2443-2445.glsl",
+    "a": 2443,
+    "z": 2445,
+    "start": 417565,
+    "end": 417657,
+    "len": 92,
+    "firstLine": "uniform mat3 clearcoatRoughnessMapTransform;"
+  },
+  {
+    "i": 40,
+    "name": "block-040__lines2447-2449.glsl",
+    "a": 2447,
+    "z": 2449,
+    "start": 417684,
+    "end": 417760,
+    "len": 76,
+    "firstLine": "uniform mat3 sheenColorMapTransform;"
+  },
+  {
+    "i": 41,
+    "name": "block-041__lines2451-2453.glsl",
+    "a": 2451,
+    "z": 2453,
+    "start": 417791,
+    "end": 417875,
+    "len": 84,
+    "firstLine": "uniform mat3 sheenRoughnessMapTransform;"
+  },
+  {
+    "i": 42,
+    "name": "block-042__lines2455-2457.glsl",
+    "a": 2455,
+    "z": 2457,
+    "start": 417902,
+    "end": 417980,
+    "len": 78,
+    "firstLine": "uniform mat3 iridescenceMapTransform;"
+  },
+  {
+    "i": 43,
+    "name": "block-043__lines2459-2461.glsl",
+    "a": 2459,
+    "z": 2461,
+    "start": 418017,
+    "end": 418113,
+    "len": 96,
+    "firstLine": "uniform mat3 iridescenceThicknessMapTransform;"
+  },
+  {
+    "i": 44,
+    "name": "block-044__lines2463-2465.glsl",
+    "a": 2463,
+    "z": 2465,
+    "start": 418137,
+    "end": 418209,
+    "len": 72,
+    "firstLine": "uniform mat3 specularMapTransform;"
+  },
+  {
+    "i": 45,
+    "name": "block-045__lines2467-2469.glsl",
+    "a": 2467,
+    "z": 2469,
+    "start": 418239,
+    "end": 418321,
+    "len": 82,
+    "firstLine": "uniform mat3 specularColorMapTransform;"
+  },
+  {
+    "i": 46,
+    "name": "block-046__lines2471-2473.glsl",
+    "a": 2471,
+    "z": 2473,
+    "start": 418355,
+    "end": 418445,
+    "len": 90,
+    "firstLine": "uniform mat3 specularIntensityMapTransform;"
+  },
+  {
+    "i": 47,
+    "name": "block-047__lines2475-2477.glsl",
+    "a": 2475,
+    "z": 2477,
+    "start": 418473,
+    "end": 418553,
+    "len": 80,
+    "firstLine": "uniform mat3 transmissionMapTransform;"
+  },
+  {
+    "i": 48,
+    "name": "block-048__lines2479-2481.glsl",
+    "a": 2479,
+    "z": 2481,
+    "start": 418578,
+    "end": 418708,
+    "len": 130,
+    "firstLine": "uniform mat3 thicknessMapTransform;"
+  },
+  {
+    "i": 49,
+    "name": "block-049__lines2554-2561.glsl",
+    "a": 2554,
+    "z": 2561,
+    "start": 421530,
+    "end": 421771,
+    "len": 241,
+    "firstLine": "#ifdef USE_BATCHING"
+  },
+  {
+    "i": 50,
+    "name": "block-050__lines2571-2579.glsl",
+    "a": 2571,
+    "z": 2579,
+    "start": 422038,
+    "end": 422455,
+    "len": 417,
+    "firstLine": "#ifdef DECODE_VIDEO_TEXTURE"
+  },
+  {
+    "i": 51,
+    "name": "block-051__lines2582-2590.glsl",
+    "a": 2582,
+    "z": 2590,
+    "start": 422534,
+    "end": 422774,
+    "len": 240,
+    "firstLine": "#include <begin_vertex>"
+  },
+  {
+    "i": 52,
+    "name": "block-052__lines2597-2609.glsl",
+    "a": 2597,
+    "z": 2609,
+    "start": 422962,
+    "end": 423494,
+    "len": 532,
+    "firstLine": "#ifdef ENVMAP_TYPE_CUBE"
+  },
+  {
+    "i": 53,
+    "name": "block-053__lines2612-2615.glsl",
+    "a": 2612,
+    "z": 2615,
+    "start": 423573,
+    "end": 423690,
+    "len": 117,
+    "firstLine": "#include <begin_vertex>"
+  },
+  {
+    "i": 54,
+    "name": "block-054__lines2623-2626.glsl",
+    "a": 2623,
+    "z": 2626,
+    "start": 423927,
+    "end": 424048,
+    "len": 121,
+    "firstLine": "#include <tonemapping_fragment>"
+  },
+  {
+    "i": 55,
+    "name": "block-055__lines2635-2655.glsl",
+    "a": 2635,
+    "z": 2655,
+    "start": 424300,
+    "end": 424871,
+    "len": 571,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 56,
+    "name": "block-056__lines2667-2687.glsl",
+    "a": 2667,
+    "z": 2687,
+    "start": 425209,
+    "end": 425940,
+    "len": 731,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 57,
+    "name": "block-057__lines2696-2713.glsl",
+    "a": 2696,
+    "z": 2713,
+    "start": 426176,
+    "end": 426687,
+    "len": 511,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 58,
+    "name": "block-058__lines2728-2734.glsl",
+    "a": 2728,
+    "z": 2734,
+    "start": 427092,
+    "end": 427371,
+    "len": 279,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 59,
+    "name": "block-059__lines2741-2744.glsl",
+    "a": 2741,
+    "z": 2744,
+    "start": 427572,
+    "end": 427689,
+    "len": 117,
+    "firstLine": "#include <begin_vertex>"
+  },
+  {
+    "i": 60,
+    "name": "block-060__lines2750-2753.glsl",
+    "a": 2750,
+    "z": 2753,
+    "start": 427862,
+    "end": 427984,
+    "len": 122,
+    "firstLine": "#include <tonemapping_fragment>"
+  },
+  {
+    "i": 61,
+    "name": "block-061__lines2764-2775.glsl",
+    "a": 2764,
+    "z": 2775,
+    "start": 428276,
+    "end": 428609,
+    "len": 333,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 62,
+    "name": "block-062__lines2788-2803.glsl",
+    "a": 2788,
+    "z": 2803,
+    "start": 428962,
+    "end": 429436,
+    "len": 474,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 63,
+    "name": "block-063__lines2813-2835.glsl",
+    "a": 2813,
+    "z": 2835,
+    "start": 429704,
+    "end": 430369,
+    "len": 665,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 64,
+    "name": "block-064__lines2857-2883.glsl",
+    "a": 2857,
+    "z": 2883,
+    "start": 431006,
+    "end": 431993,
+    "len": 987,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 65,
+    "name": "block-065__lines2898-2922.glsl",
+    "a": 2898,
+    "z": 2922,
+    "start": 432413,
+    "end": 433127,
+    "len": 714,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 66,
+    "name": "block-066__lines2952-2979.glsl",
+    "a": 2952,
+    "z": 2979,
+    "start": 434037,
+    "end": 435065,
+    "len": 1028,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 67,
+    "name": "block-067__lines2992-3012.glsl",
+    "a": 2992,
+    "z": 3012,
+    "start": 435422,
+    "end": 436030,
+    "len": 608,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 68,
+    "name": "block-068__lines3033-3043.glsl",
+    "a": 3033,
+    "z": 3043,
+    "start": 436643,
+    "end": 437027,
+    "len": 384,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 69,
+    "name": "block-069__lines3046-3059.glsl",
+    "a": 3046,
+    "z": 3059,
+    "start": 437128,
+    "end": 437636,
+    "len": 508,
+    "firstLine": "#ifdef USE_MATCAP"
+  },
+  {
+    "i": 70,
+    "name": "block-070__lines3072-3089.glsl",
+    "a": 3072,
+    "z": 3089,
+    "start": 437973,
+    "end": 438575,
+    "len": 602,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 71,
+    "name": "block-071__lines3105-3114.glsl",
+    "a": 3105,
+    "z": 3114,
+    "start": 439050,
+    "end": 439349,
+    "len": 299,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 72,
+    "name": "block-072__lines3129-3153.glsl",
+    "a": 3129,
+    "z": 3153,
+    "start": 439769,
+    "end": 440481,
+    "len": 712,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 73,
+    "name": "block-073__lines3185-3212.glsl",
+    "a": 3185,
+    "z": 3212,
+    "start": 441437,
+    "end": 442531,
+    "len": 1094,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 74,
+    "name": "block-074__lines3229-3252.glsl",
+    "a": 3229,
+    "z": 3252,
+    "start": 442982,
+    "end": 443686,
+    "len": 704,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 75,
+    "name": "block-075__lines3265-3306.glsl",
+    "a": 3265,
+    "z": 3306,
+    "start": 443905,
+    "end": 444890,
+    "len": 985,
+    "firstLine": "uniform float ior;"
+  },
+  {
+    "i": 76,
+    "name": "block-076__lines3339-3380.glsl",
+    "a": 3339,
+    "z": 3380,
+    "start": 445967,
+    "end": 447790,
+    "len": 1823,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 77,
+    "name": "block-077__lines3394-3417.glsl",
+    "a": 3394,
+    "z": 3417,
+    "start": 448180,
+    "end": 448865,
+    "len": 685,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 78,
+    "name": "block-078__lines3445-3470.glsl",
+    "a": 3445,
+    "z": 3470,
+    "start": 449701,
+    "end": 450663,
+    "len": 962,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 79,
+    "name": "block-079__lines3479-3501.glsl",
+    "a": 3479,
+    "z": 3501,
+    "start": 450887,
+    "end": 451537,
+    "len": 650,
+    "firstLine": "uniform mat3 uvTransform;"
+  },
+  {
+    "i": 80,
+    "name": "block-080__lines3512-3526.glsl",
+    "a": 3512,
+    "z": 3526,
+    "start": 451863,
+    "end": 452341,
+    "len": 478,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 81,
+    "name": "block-081__lines3533-3549.glsl",
+    "a": 3533,
+    "z": 3549,
+    "start": 452518,
+    "end": 453003,
+    "len": 485,
+    "firstLine": "#include <batching_vertex>"
+  },
+  {
+    "i": 82,
+    "name": "block-082__lines3559-3565.glsl",
+    "a": 3559,
+    "z": 3565,
+    "start": 453238,
+    "end": 453480,
+    "len": 242,
+    "firstLine": "#include <logdepthbuf_fragment>"
+  },
+  {
+    "i": 83,
+    "name": "block-083__lines3572-3580.glsl",
+    "a": 3572,
+    "z": 3580,
+    "start": 453640,
+    "end": 454036,
+    "len": 396,
+    "firstLine": "#include <uv_vertex>"
+  },
+  {
+    "i": 84,
+    "name": "block-084__lines3585-3589.glsl",
+    "a": 3585,
+    "z": 3589,
+    "start": 454310,
+    "end": 454450,
+    "len": 140,
+    "firstLine": "#include <logdepthbuf_vertex>"
+  },
+  {
+    "i": 85,
+    "name": "block-085__lines3601-3612.glsl",
+    "a": 3601,
+    "z": 3612,
+    "start": 454798,
+    "end": 455172,
+    "len": 374,
+    "firstLine": "#include <clipping_planes_fragment>"
+  },
+  {
+    "i": 86,
+    "name": "block-086__lines3615-3636.glsl",
+    "a": 3615,
+    "z": 3636,
+    "start": 486155,
+    "end": 486765,
+    "len": 610,
+    "firstLine": "precision mediump float;"
+  },
+  {
+    "i": 87,
+    "name": "block-087__lines3638-3661.glsl",
+    "a": 3638,
+    "z": 3661,
+    "start": 486767,
+    "end": 487275,
+    "len": 508,
+    "firstLine": "return bilinearCubeUV( envMap, sampleDirection, mipInt );"
+  },
+  {
+    "i": 88,
+    "name": "block-088__lines3663-3733.glsl",
+    "a": 3663,
+    "z": 3733,
+    "start": 487277,
+    "end": 488944,
+    "len": 1667,
+    "firstLine": "}"
+  },
+  {
+    "i": 89,
+    "name": "block-089__lines3749-3760.glsl",
+    "a": 3749,
+    "z": 3760,
+    "start": 489184,
+    "end": 489331,
+    "len": 147,
+    "firstLine": "}"
+  },
+  {
+    "i": 90,
+    "name": "block-090__lines3870-3888.glsl",
+    "a": 3870,
+    "z": 3888,
+    "start": 876054,
+    "end": 876379,
+    "len": 325,
+    "firstLine": "varying vec2 vUv;"
+  },
+  {
+    "i": 91,
+    "name": "block-091__lines3892-3954.glsl",
+    "a": 3892,
+    "z": 3954,
+    "start": 881567,
+    "end": 882805,
+    "len": 1238,
+    "firstLine": "precision highp float;"
+  },
+  {
+    "i": 92,
+    "name": "block-092__lines3958-3986.glsl",
+    "a": 3958,
+    "z": 3986,
+    "start": 885318,
+    "end": 885957,
+    "len": 639,
+    "firstLine": "varying vec2 vUv;"
+  },
+  {
+    "i": 93,
+    "name": "block-093__lines3989-4035.glsl",
+    "a": 3989,
+    "z": 4035,
+    "start": 891499,
+    "end": 893727,
+    "len": 2228,
+    "firstLine": "void main() {"
+  }
+]

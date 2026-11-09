@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>桌面伴侣</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="app-window" id="app">
+      <div class="drag-strip"></div>
+
+      <!-- 独立面板窗口自带一条可拖动的标题栏（主窗口里隐藏） -->
+      <div class="panel-bar" id="panel-bar" hidden>
+        <span class="panel-bar-title" id="panel-bar-title">设置</span>
+        <span class="panel-bar-actions">
+          <button class="panel-bar-btn" id="panel-bar-min" title="最小化">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+          </button>
+          <button class="panel-bar-btn danger" id="panel-bar-close" title="关闭">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </span>
+      </div>
+
+      <!-- 顶部栏 -->
+      <header class="top-bar">
+        <button class="btn-icon active" id="btn-pin" title="置顶">
+          <svg viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2z"/></svg>
+        </button>
+        <div class="top-status" id="top-status">待机</div>
+        <div class="window-controls">
+          <button class="btn-icon" id="btn-min" title="最小化">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+          </button>
+          <button class="btn-icon danger" id="btn-close" title="收起到托盘（右键托盘图标退出）">
+            <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- 中央舞台：3D 内核 iframe（透明、不拦截鼠标） -->
+      <main class="stage" id="stage">
+        <iframe id="pet-frame" title="角色" allowtransparency="true"></iframe>
+        <div class="stage-loading" id="stage-loading">
+          <span class="spinner"></span>
+          <span id="stage-loading-text">正在唤醒…</span>
+        </div>
+        <div class="stage-hint" id="stage-hint">滚轮缩放 · 按住左键拖动旋转</div>
+      </main>
+
+      <!-- 录音波形 HUD：录音时显示在 Dock 上方 -->
+      <div class="voice-hud" id="voice-hud" hidden>
+        <div class="voice-bars" id="voice-bars"></div>
+        <div class="voice-partial" id="voice-partial"></div>
+      </div>
+
+      <!-- 底部 Dock -->
+      <nav class="dock">
+        <button class="dock-btn" id="btn-bg" title="背景切换">
+          <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </button>
+        <button class="dock-btn" id="btn-pivot" title="缩放中心">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1.7"/><polyline points="8.5 3 3 3 3 8.5"/><polyline points="15.5 3 21 3 21 8.5"/><polyline points="3 15.5 3 21 8.5 21"/><polyline points="21 15.5 21 21 15.5 21"/></svg>
+        </button>
+        <div class="dock-pop" id="pivot-pop" hidden>
+          <div class="dock-pop-head"><span>缩放中心</span><b id="pivot-pop-v">0%</b></div>
+          <input type="range" id="set-pivot-dock" min="0" max="100" step="1" value="0" />
+          <div class="dock-pop-foot"><span>脚底</span><span>头顶</span></div>
+        </div>
+        <button class="dock-btn" id="btn-chat" title="对话">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button class="dock-btn" id="btn-mic" title="麦克风（预留）">
+          <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>
+        </button>
+        <button class="dock-btn" id="btn-voice" title="自动朗读">
+          <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </button>
+        <button class="dock-btn" id="btn-action" title="动作列表">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </button>
+        <button class="dock-btn" id="btn-settings" title="设置">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </nav>
+
+      <!-- === 动作队列面板 === -->
+      <section class="panel action-panel" id="action-panel">
+        <div class="action-header">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span id="queue-title">队列空闲</span>
+          <span class="action-header-right">
+            <button class="link-btn" id="btn-pause-queue" title="暂停后不再向内核送入新动作">暂停</button>
+            <button class="link-btn" id="btn-clear-queue">清空</button>
+          </span>
+        </div>
+        <div class="action-list" id="action-list"></div>
+        <div class="action-footer">
+          <button class="btn-add" id="btn-add-action">+ 添加动作</button>
+          <button class="btn-ghost-sm" id="btn-reset-idle">返回待机</button>
+        </div>
+      </section>
+
+      <!-- === 对话面板 === -->
+      <aside class="chat-panel panel" id="chat-panel">
+        <div class="chat-header">
+          <div>
+            <h2 id="chat-title">对话</h2>
+            <p class="chat-sub">DeepSeek 风格 · LLM 接口已预留</p>
+          </div>
+          <span class="close-panel" id="close-chat">✕</span>
+        </div>
+        <div class="chat-history" id="chat-history"></div>
+        <div class="chat-input-wrap">
+          <div class="chat-input-box">
+            <div
+              class="dsh-editor"
+              id="chat-input"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              data-placeholder="发送消息…（Enter 发送，Shift+Enter 换行）"
+            ></div>
+            <div class="chat-tools">
+              <div class="chat-tools-left">
+                <button class="btn-plus" id="btn-plus" title="更多功能">+</button>
+                <button class="chat-mode-btn" id="chat-chip-think" type="button" data-mode="think" aria-pressed="false" disabled title="深度思考">
+                  <span class="chip-icon" data-icon="think" aria-hidden="true"><svg viewBox="0 0 16 16"></svg></span>
+                </button>
+                <button class="chat-mode-btn" id="chat-chip-search" type="button" data-mode="search" aria-pressed="false" title="联网搜索">
+                  <span class="chip-icon" data-icon="globe" aria-hidden="true"><svg viewBox="0 0 16 16"></svg></span>
+                </button>
+                <span class="chat-model">mock</span>
+              </div>
+              <button class="btn-send" id="btn-send" title="发送">
+                <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- === 设置面板 === -->
+      <section class="settings-panel panel" id="settings-panel">
+        <div class="settings-nav">
+          <div class="settings-nav-title">设置</div>
+          <div class="settings-nav-item active" data-page="performance">性能调节</div>
+          <div class="settings-nav-item" data-page="stats">统计</div>
+          <div class="settings-nav-item" data-page="agent">Agent 运行</div>
+          <div class="settings-nav-item" data-page="model">模型</div>
+          <div class="settings-nav-item" data-page="preset">预设</div>
+          <div class="settings-nav-item" data-page="tools">工具管理</div>
+          <div class="settings-nav-item" data-page="plugins">插件</div>
+          <div class="settings-nav-item" data-page="voice">语音</div>
+          <div class="settings-nav-item" data-page="memorydb">记忆库</div>
+          <div class="settings-nav-item" data-page="memory">笔记</div>
+          <div class="settings-nav-item" data-page="archive">归档</div>
+          <div class="settings-nav-item" data-page="console">控制台</div>
+          <div class="settings-nav-item" data-page="extensions">角色</div>
+        </div>
+        <div class="settings-main">
+          <div class="settings-content">
+            <div class="close-settings" id="close-settings">✕</div>
+
+          <!-- 性能调节 -->
+          <div class="settings-page active" data-page="performance">
+            <h2>性能调节</h2>
+            <p class="page-desc">渲染内核的实时状态。鼠标移出窗口会自动释放视线跟随。</p>
+            <div class="stat-grid">
+              <div class="stat-card"><span class="stat-label">FPS</span><b id="stat-fps">—</b></div>
+              <div class="stat-card"><span class="stat-label">动作状态</span><b id="stat-state">待机</b></div>
+              <div class="stat-card"><span class="stat-label">队列</span><b id="stat-queue">0</b></div>
+              <div class="stat-card"><span class="stat-label">内存</span><b id="stat-mem">—</b></div>
+            </div>
+            <label class="setting-row" id="row-visual-off">
+              <div><b>关闭画面</b><span>停掉 3D 内核，舞台中间只显示「已停止渲染」（不渲染任何内容，最省电）</span></div>
+              <input type="checkbox" id="set-visual-off" />
+            </label>
+            <label class="setting-row" id="row-visual-off-bg">
+              <div><b>收起到托盘时关闭画面</b><span>收起到状态栏（托盘）后停掉 3D 内核，点托盘回来再挂；最小化到任务栏不关</span></div>
+              <input type="checkbox" id="set-visual-off-bg" />
+            </label>
+            <div class="setting-row">
+              <div><b>渲染后端</b><span id="backend-hint">WebGL：稳定兼容，默认后端</span></div>
+              <select id="set-backend">
+                <option value="webgpu">WebGPU（实验性，可能崩溃）</option>
+                <option value="webgl" selected>WebGL（默认）</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div><b>渲染分辨率</b><span>数值越高越清晰，也越吃 GPU</span></div>
+              <select id="set-resolution">
+                <option value="0.75">0.75×（省电）</option>
+                <option value="1">1×（均衡）</option>
+                <option value="1.5">1.5×（清晰）</option>
+                <option value="2" selected>2×（最高）</option>
+              </select>
+            </div>
+            <label class="setting-row">
+              <div><b>超分辨率（FSR）</b><span>场景按低分辨率渲染再时间超分回原生，省 GPU</span></div>
+              <input type="checkbox" id="set-fsr" />
+            </label>
+            <div class="setting-row" id="row-fsr-scale">
+              <div><b>FSR 渲染倍率</b><span>越低越省，低于 60% 画面会明显变软</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-fsr-scale" min="0.4" max="0.9" step="0.02" value="0.66" />
+                <b id="set-fsr-scale-v">66%</b>
+              </div>
+            </div>
+            <label class="setting-row">
+              <div><b>帧生成</b><span>出图降到 30Hz，用 RIFE 插帧补到显示帧率（实验性，可能崩溃）</span></div>
+              <input type="checkbox" id="set-framegen" />
+            </label>
+            <div class="setting-row" id="row-framegen-hz">
+              <div><b>帧生成出图帧率</b><span>真实渲染频率，中间帧由插值补</span></div>
+              <select id="set-framegen-hz">
+                <option value="24">24 Hz</option>
+                <option value="30" selected>30 Hz</option>
+                <option value="45">45 Hz</option>
+                <option value="60">60 Hz</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div><b>目标帧率</b><span>0 = 跟随显示器；限帧只限制渲染，动画不会变慢</span></div>
+              <select id="set-target-fps">
+                <option value="0" selected>跟随显示器</option>
+                <option value="30">30 FPS</option>
+                <option value="45">45 FPS</option>
+                <option value="60">60 FPS</option>
+                <option value="120">120 FPS</option>
+              </select>
+            </div>
+            <label class="setting-row">
+              <div><b>自适应画质</b><span>掉帧时自动降渲染倍率，回稳后再升回来</span></div>
+              <input type="checkbox" id="set-adaptive" />
+            </label>
+            <label class="setting-row">
+              <div><b>光晕（Bloom）</b><span>角色高光处的柔光，关掉更省电</span></div>
+              <input type="checkbox" id="set-bloom" checked />
+            </label>
+            <div class="setting-row">
+              <div><b>光晕强度</b><span>数值越高，亮部光晕越明显</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-bloom-strength" min="0" max="1" step="0.01" value="0.15" />
+                <b id="set-bloom-strength-v">0.15</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>光晕阈值</b><span>越高只有更亮的像素会发光</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-bloom-threshold" min="0" max="1" step="0.01" value="0.8" />
+                <b id="set-bloom-threshold-v">0.80</b>
+              </div>
+            </div>
+            <label class="setting-row">
+              <div><b>描边</b><span>角色轮廓线，关掉会更快也更平</span></div>
+              <input type="checkbox" id="set-outline" checked />
+            </label>
+            <label class="setting-row">
+              <div><b>水墨特效</b><span>拖尾与墨迹 VFX，关掉最省 GPU</span></div>
+              <input type="checkbox" id="set-vfx" checked />
+            </label>
+            <label class="setting-row">
+              <div><b>眨眼</b><span>关闭后不再自动眨眼（表情仍可触发）</span></div>
+              <input type="checkbox" id="set-blink" checked />
+            </label>
+            <div class="setting-row" id="row-blink-interval">
+              <div><b>眨眼间隔</b><span>两次自动眨眼之间的等待时间</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-blink-interval" min="0.5" max="10" step="0.1" value="3" />
+                <b id="set-blink-interval-v">3.0s</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>模型大小</b><span>舞台区滚轮也可以直接缩放</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-scale" min="0.6" max="1.8" step="0.01" value="1" />
+                <b id="set-scale-v">100%</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>模型朝向</b><span>舞台区按住左键拖动可直接旋转</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-rotation" min="-180" max="180" step="1" value="0" />
+                <b id="set-rotation-v">0°</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>缩放中心</b><span>缩放时固定脚底（0%）还是头顶（100%）</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-pivot" min="0" max="1" step="0.05" value="0" />
+                <b id="set-pivot-v">0%</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>视图复位</b><span>恢复默认大小、朝向与缩放中心</span></div>
+              <button class="btn-ghost-sm" id="btn-reset-view">重置</button>
+            </div>
+            <label class="setting-row">
+              <div><b>鼠标视线跟随</b><span id="set-mouse-follow-desc">关闭后角色不再用眼神追随鼠标</span></div>
+              <input type="checkbox" id="set-mouse-follow" checked />
+            </label>
+            <label class="setting-row">
+              <div><b>鼠标出框自动停止视线跟随</b><span>指针离开窗口后头部自然回正</span></div>
+              <input type="checkbox" id="set-look-release" checked />
+            </label>
+            <label class="setting-row">
+              <div><b>整窗鼠标穿透</b><span>快捷键 Ctrl+Shift+P 也可以切换</span></div>
+              <input type="checkbox" id="set-clickthrough" />
+            </label>
+          </div>
+
+          <!-- 统计 -->
+          <div class="settings-page" data-page="stats">
+            <div class="preset-head">
+              <div>
+                <h2>统计</h2>
+                <p class="page-desc">左边是当前会话，右边是累计。上下文接近上限时，就是该压缩或开新会话的时候了。</p>
+              </div>
+              <button class="btn-ghost-sm" id="btn-stats-reset">清零</button>
+            </div>
+
+            <div class="stats-cards">
+              <div class="stats-card">
+                <div class="stats-head"><span>上下文已用</span><b id="stats-context-pct">0%</b></div>
+                <div class="stats-big"><b id="stats-context-num">0</b><span id="stats-context-max">/ 128,000</span></div>
+                <div class="stats-bar">
+                  <i class="seg-system" id="stats-seg-system"></i>
+                  <i class="seg-tools" id="stats-seg-tools"></i>
+                  <i class="seg-chat" id="stats-seg-chat"></i>
+                </div>
+                <div class="stats-legend">
+                  <span><i class="seg-system"></i>系统提示词 <b id="stats-tok-system">0</b></span>
+                  <span><i class="seg-tools"></i>工具定义 <b id="stats-tok-tools">0</b></span>
+                  <span><i class="seg-chat"></i>对话消息 <b id="stats-tok-chat">0</b></span>
+                </div>
+              </div>
+
+              <div class="stats-card">
+                <div class="stats-head"><span>Token 用量</span><b id="stats-cache-rate">—</b></div>
+                <p class="stats-sub">缓存命中率 · 本次会话 / 累计</p>
+                <div class="stats-rows">
+                  <div class="stats-row">
+                    <span>未缓存输入</span>
+                    <span class="stats-val"><b id="stats-tok-in">0</b><small id="stats-tok-in-all">累计 0</small></span>
+                  </div>
+                  <div class="stats-row">
+                    <span>缓存读取</span>
+                    <span class="stats-val"><b id="stats-tok-cache">0</b><small id="stats-tok-cache-all">累计 0</small></span>
+                  </div>
+                  <div class="stats-row">
+                    <span>输出</span>
+                    <span class="stats-val"><b id="stats-tok-out">0</b><small id="stats-tok-out-all">累计 0</small></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="stats-card">
+                <div class="stats-head"><span>会话统计</span><b id="stats-calls">0 轮</b></div>
+                <p class="stats-sub">模型与工具耗时 · 本次会话 / 累计</p>
+                <div class="stats-rows">
+                  <div class="stats-row">
+                    <span>模型用时</span>
+                    <span class="stats-val"><b id="stats-model-ms">0s</b><small id="stats-model-ms-all">累计 0s</small></span>
+                  </div>
+                  <div class="stats-row">
+                    <span>工具调用用时</span>
+                    <span class="stats-val"><b id="stats-tool-ms">0s</b><small id="stats-tool-ms-all">累计 0s</small></span>
+                  </div>
+                  <div class="stats-row">
+                    <span>首 token 平均 TTFT</span>
+                    <span class="stats-val"><b id="stats-ttft">—</b><small id="stats-ttft-all">累计 —</small></span>
+                  </div>
+                  <div class="stats-row">
+                    <span>输出速度 TPS</span>
+                    <span class="stats-val"><b id="stats-tps">—</b><small id="stats-tps-all">累计 —</small></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Agent 运行参数 -->
+          <div class="settings-page" data-page="agent">
+            <h2>Agent 运行</h2>
+            <p class="page-desc">控制上下文发送范围、工具轮次与熔断阈值。改动立即生效。</p>
+            <label class="setting-row">
+              <div><b>后台回复通知</b><span>窗口不在前台时（最小化、收进托盘或切到别的程序），回复完成后弹系统通知并闪烁任务栏图标；点击通知直接把窗口调出来</span></div>
+              <input type="checkbox" id="set-notify-background" checked />
+            </label>
+            <div class="setting-row">
+              <div><b>发送最近多少轮对话</b><span>按「对话轮次」截取：每条用户消息算一轮，连同该轮引发的全部助手回复、工具调用与工具结果一起发送；拉到最右 100 为 MAX，发送全部未压缩上下文</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-history" min="4" max="100" step="1" value="20" />
+                <b id="set-history-v">20</b>
+                <span class="max-badge" id="set-history-max" hidden>MAX</span>
+              </div>
+            </div>
+            <p class="page-warn" id="history-warn" hidden>⚠️ MAX 模式将全量发送所有未压缩上下文，将消耗更多 Token 并增加延迟。</p>
+            <div class="setting-row">
+              <div><b>单次对话最大工具调用轮次</b><span>一次提问里最多连续组装 N 次模型请求（含工具调用轮次），超出后强制中断并在对话里提示。默认 8，范围 3–20</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-tool-rounds" min="3" max="20" step="1" value="8" />
+                <b id="set-tool-rounds-v">8</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>防死循环熔断阈值</b><span>同一工具 + 完全相同的参数连续调用达到该次数时，这一次会被拒绝并返回系统警告。默认 3，范围 2–10</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-tool-repeat" min="2" max="10" step="1" value="3" />
+                <b id="set-tool-repeat-v">3</b>
+              </div>
+            </div>
+            <label class="setting-row">
+              <div><b>无输出自动停止</b><span>发送请求后超过设定时间没有任何输出（首 token 或流式中断），判定为卡住并停止。关掉后只能手动点停止</span></div>
+              <input type="checkbox" id="set-idle-timeout" checked />
+            </label>
+            <div class="setting-row" id="idle-timeout-row">
+              <div><b>无输出等待时长</b><span>多久没有新内容就判定卡住；默认 60 秒，模型首 token 很慢可以调大</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-idle-timeout-sec" min="10" max="300" step="10" value="60" />
+                <b id="set-idle-timeout-sec-v">60s</b>
+              </div>
+            </div>
+            <div class="setting-row" id="compress-idle-row">
+              <div><b>压缩等待时长</b><span>压缩要生成较长摘要，可以比普通对话等更久；默认 180 秒，范围 30–600 秒。只在上面开启时生效</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-compress-idle" min="30" max="600" step="30" value="180" />
+                <b id="set-compress-idle-v">180s</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>失败重试次数</b><span>网络错误、无输出超时或服务端 5xx 时自动重试的次数；已经收到内容的请求不会重试，避免回复重复。默认 3，范围 0–5</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-llm-retries" min="0" max="5" step="1" value="3" />
+                <b id="set-llm-retries-v">3</b>
+              </div>
+            </div>
+            <label class="setting-row">
+              <div><b>上下文自动压缩</b><span>每次发送前，如果未压缩上下文超过下面的阈值，先自动压缩一次再检索记忆、回复。关掉后只能用「+ → 压缩上下文」手动压缩</span></div>
+              <input type="checkbox" id="set-auto-compress" checked />
+            </label>
+            <div class="setting-row" id="auto-compress-row">
+              <div><b>触发阈值</b><span>占当前模型上下文窗口的比例；默认 75%，调低更早压缩、更省 token</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-auto-compress-at" min="30" max="95" step="5" value="75" />
+                <b id="set-auto-compress-at-v">75%</b>
+              </div>
+            </div>
+            <label class="setting-row">
+              <div><b>在对话里显示思考</b><span>开启后，回复上方会显示可折叠的思考过程（等待时显示扫光「正在思考」）；关闭则对话只保留正文，更沉浸</span></div>
+              <input type="checkbox" id="set-chat-think" />
+            </label>
+            <label class="setting-row">
+              <div><b>图片读取权限</b><span>关闭时，模型只能读取本会话里你拖入或手动输入过的图片路径；开启后允许读取任意存在的图片（png / jpg / webp / gif / bmp，单张不超过 20MB）</span></div>
+              <input type="checkbox" id="set-image-read" />
+            </label>
+          </div>
+
+          <!-- 模型 API -->
+          <div class="settings-page" data-page="model">
+            <div class="settings-head">
+              <div>
+                <h2>模型</h2>
+                <p class="page-desc">
+                  保存多套 OpenAI 兼容配置，点卡片切换当前模型；有 Key 时走真实请求，否则使用 Mock。
+                  联网搜索的供应商与 Key 也在这一页统一管理，和模型配置存在同一份本地存储。
+                </p>
+              </div>
+            </div>
+
+            <div class="provider-list" id="model-list"></div>
+            <button class="provider-add" id="btn-add-model" type="button">＋ 添加模型提供商</button>
+
+            <div class="model-editor" id="model-editor" hidden>
+              <div class="model-editor-head">
+                <b id="model-editor-title">添加模型</b>
+                <button class="model-editor-close" id="btn-cancel-model" type="button" title="关闭">×</button>
+              </div>
+              <div class="form-grid">
+                <label class="field"><span>显示名称</span><input id="model-name" placeholder="DeepSeek" autocomplete="off" /></label>
+                <label class="field"
+                  ><span>API 地址（Base URL）</span><input id="model-base" placeholder="https://api.deepseek.com/v1" autocomplete="off"
+                /></label>
+                <label class="field"
+                  ><span>API Key</span><input id="model-key" type="password" placeholder="sk-…" autocomplete="off"
+                /></label>
+                <label class="field"><span>模型 ID</span><input id="model-model" placeholder="deepseek-chat" autocomplete="off" /></label>
+                <label class="field"
+                  ><span>上下文窗口（tokens）</span><input id="model-context" type="number" min="1000" step="1000" placeholder="128000"
+                /></label>
+                <div class="field effort-field">
+                  <span>思考参数（合并进请求体的 JSON，可留空）</span>
+                  <div class="effort-rows">
+                    <label class="effort-row"
+                      ><b>关闭</b><input id="model-effort-off" placeholder="留空 = 关闭时什么都不发" autocomplete="off" spellcheck="false"
+                    /></label>
+                    <label class="effort-row"
+                      ><b>开启</b><input id="model-effort-on" placeholder='{"reasoning_effort":"medium"}' autocomplete="off" spellcheck="false"
+                    /></label>
+                  </div>
+                  <div class="effort-hint" id="model-effort-hint">开启一栏留空 = 该模型不支持思考强度，控制台的「深度思考」会置灰。</div>
+                  <div class="effort-presets">
+                    <button type="button" class="btn-ghost-sm" data-effort-preset="openai">OpenAI 系</button>
+                    <button type="button" class="btn-ghost-sm" data-effort-preset="anthropic">Anthropic</button>
+                    <button type="button" class="btn-ghost-sm" data-effort-preset="clear">清空</button>
+                  </div>
+                </div>
+              </div>
+              <div class="model-editor-actions">
+                <button class="btn-ghost-sm" id="btn-cancel-model-bottom" type="button">取消</button>
+                <button class="btn-save" id="btn-save-model">保存</button>
+              </div>
+            </div>
+
+            <div class="search-panel">
+              <div class="search-panel-head">
+                <div class="search-panel-title">
+                  <b>联网搜索</b>
+                  <span class="search-panel-sub">web_search 工具的后端</span>
+                </div>
+                <span class="provider-state" id="search-state">
+                  <i class="provider-dot" id="search-dot"></i>
+                  <span id="search-state-text">使用匿名免费额度</span>
+                </span>
+              </div>
+              <div class="search-form">
+                <label class="field">
+                  <span>搜索供应商</span>
+                  <select id="search-provider"></select>
+                </label>
+                <label class="field" id="search-endpoint-field" hidden>
+                  <span>SearXNG 地址</span>
+                  <input id="search-endpoint" type="text" placeholder="http://localhost:8888" autocomplete="off" spellcheck="false" />
+                </label>
+                <label class="field" id="search-key-field">
+                  <span>API Key</span>
+                  <input id="search-key" type="password" placeholder="as_sk_…（留空走匿名免费额度）" autocomplete="off" />
+                </label>
+                <div class="search-form-actions">
+                  <button class="btn-ghost-sm" id="btn-search-test" type="button">测试连接</button>
+                  <button class="btn-save" id="btn-search-save" type="button">保存</button>
+                </div>
+              </div>
+              <div class="search-test-result" id="search-test-result" hidden></div>
+              <p class="search-custom-hint" id="search-custom-hint" hidden>
+                自定义供应商的请求地址、请求头、请求体和返回字段映射都在 <code>si/app/search.providers.json</code> 里改（只读取第一条）。
+                改完保存文件，点「测试连接」立即生效，不用重启。
+              </p>
+              <p class="search-panel-note">
+                Key 只存本机，不进入模型上下文。SearXNG 不用填 Key，实例需开启 JSON 输出（settings.yml 的 search.formats 加 <code>json</code>）。
+              </p>
+            </div>
+          </div>
+
+          <!-- 预设（提示词） -->
+          <div class="settings-page" data-page="preset">
+            <div class="preset-head">
+              <div>
+                <h2>系统提示词</h2>
+                <p class="page-desc">
+                  这里的内容全部来自本地 .md，程序不内置任何提示词；文件为空就整块不注入。
+                  保存时分别写回 <code>si/app/preset-persona.md</code>、<code>preset-speak.md</code>、
+                  <code>preset-time.md</code>、<code>preset-memory.md</code>、<code>preset-actions.md</code>。
+                  MEMORY 里用 <code>{{MEMORIES}}</code> 代表记忆条目列表；任意提示词里用 <code>{{char}}</code> 代表当前角色名。
+                </p>
+              </div>
+              <button class="btn-save" id="btn-save-all">保存</button>
+            </div>
+            <label class="setting-row" id="row-prompt-time">
+              <div>
+                <b>提示词附带当前时间</b>
+                <span>在最新一条用户消息前加 [日期 周几 时分]，模型才能判断「今天/现在/上午下午」。只写进请求体，聊天记录里看不到；关掉则完全不注入。</span>
+              </div>
+              <input type="checkbox" id="set-prompt-time" checked />
+            </label>
+            <div class="preset-editor" id="preset-editor">
+              <div class="preset-block" data-key="prompt">
+                <div class="preset-label"><span>PROMPT</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="line-numbers" data-for="preset-speak"></div>
+                  <textarea id="preset-speak" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="preset-block" data-key="persona">
+                <div class="preset-label"><span>PERSONA</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="line-numbers" data-for="preset-persona"></div>
+                  <textarea id="preset-persona" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="preset-block" data-key="time">
+                <div class="preset-label"><span>TIME</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="line-numbers" data-for="preset-time"></div>
+                  <textarea id="preset-time" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="preset-block readonly" data-key="tools">
+                <div class="preset-label"><span>TOOLS</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="readonly-stack" id="preset-tools"></div>
+                </div>
+              </div>
+              <div class="preset-block" data-key="memory">
+                <div class="preset-label"><span>MEMORY</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="line-numbers" data-for="preset-memory"></div>
+                  <textarea id="preset-memory" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="preset-block" data-key="actions">
+                <div class="preset-label"><span>ACTIONS</span></div>
+                <div class="preset-input-wrapper">
+                  <textarea id="preset-actions" class="preset-actions-input" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="preset-actions-bar">
+                <span id="preset-speak-path">si/app/preset-speak.md</span>
+                <span>PROMPT / PERSONA / TIME / MEMORY 保存时写回各自的 md</span>
+              </div>
+              <div class="preset-actions-bar">
+                <span id="preset-actions-path">si/app/preset-actions.md</span>
+                <button class="link-btn" id="btn-regenerate-actions">从动作库重建</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 工具管理：只管理真 Tool Call；SPEAK / MEM_MARK 属于底层协议，不在这里 -->
+          <div class="settings-page" data-page="tools">
+            <div class="preset-head">
+              <div>
+                <h2>工具管理</h2>
+                <p class="page-desc">
+                  这里只管理真正的 Tool Call（可插拔工具）。关闭后模型不再收到该工具的说明与参数格式，执行时也会被拒绝；
+                  开关即时写回 <code>si/app/tools.config.json</code>。
+                </p>
+              </div>
+              <button class="btn-ghost-sm" id="btn-tools-reload">重新读取</button>
+            </div>
+            <div class="tool-manage-list" id="tool-manage-list"></div>
+            <div class="preset-actions-bar">
+              <span id="tools-config-path">si/app/tools.config.json</span>
+              <span>prompt / schema 可直接编辑该文件，改完点「重新读取」</span>
+            </div>
+            <div class="tool-manage-protocol">
+              <b>底层通讯协议（始终开启，不参与管理）</b>
+              <span>SPEAK 台词标记、MEM_MARK 记忆纠错标记及其正则解析硬编码在系统提示里，避免误关基础能力。SPEAK 现在是可选覆盖：不加标记时直接朗读正文，加了就只念标记里的台词。</span>
+            </div>
+          </div>
+
+          <!-- 语音 -->
+          <div class="settings-page" data-page="voice">
+            <div class="preset-head">
+              <div>
+                <h2>语音输入</h2>
+                <p class="page-desc">本地 whisper.cpp 离线转写。点麦克风开始，再点一次结束；结果只填入输入框，不会自动发送。</p>
+              </div>
+              <button class="btn-ghost-sm" id="btn-voice-refresh">重新检测</button>
+            </div>
+            <div class="setting-row">
+              <div><b>转写引擎</b><span id="voice-bin">检测中…</span></div>
+            </div>
+            <div class="setting-row">
+              <div><b>模型</b><span id="voice-model">检测中…</span></div>
+              <select id="set-voice-model" hidden></select>
+            </div>
+            <div class="voice-install" id="voice-install" hidden>
+              <button class="btn-ghost-sm" id="btn-voice-download">下载组件</button>
+              <button class="btn-ghost-sm" id="btn-voice-import">导入 zip</button>
+            </div>
+
+            <div class="preset-head tts-head">
+              <div>
+                <h2>语音合成</h2>
+                <p class="page-desc">装了语音插件就自动接管；没有插件时用系统自带语音，零依赖。</p>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>当前引擎</b><span id="tts-engine-state">检测中…</span></div>
+            </div>
+            <label class="setting-row">
+              <div><b>系统语音（内置）</b><span>关闭后没有语音插件就不朗读；插件接管时此开关不生效</span></div>
+              <input type="checkbox" id="set-tts-web" />
+            </label>
+            <label class="setting-row">
+              <div><b>自动朗读</b><span>每轮助手回复结束后自动念出来</span></div>
+              <input type="checkbox" id="set-auto-read" />
+            </label>
+          </div>
+
+          <!-- 记忆库：直接读 SQLite 长程记忆库 + 摘要归档 -->
+          <div class="settings-page" data-page="memorydb">
+            <div class="preset-head">
+              <div>
+                <h2>记忆库</h2>
+                <p class="page-desc">这里直接读取 SQLite 长程记忆库（写入与检索都在后台）。点卡片可以展开激活度、置信度和来源。</p>
+              </div>
+              <div class="mem-db-actions">
+                <button class="link-btn" id="btn-mem-refresh">刷新</button>
+                <button class="link-btn" id="btn-mem-dedupe">整理</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>启用长期记忆</b><span>关闭后每轮不再检索，也不会向提示词注入记忆（库里的条目保留）</span></div>
+              <input type="checkbox" id="set-memory-enabled" checked />
+            </div>
+
+            <!-- Step 5：检索 / 结算参数，改动即时生效（下一轮检索与结算按新值走）；折叠收起，避免误触 -->
+            <details class="mem-params" id="mem-params">
+              <summary>
+                <span class="chev">⌄</span>
+                <b>参数调节</b>
+                <span class="mem-params-hint">检索阈值 · 注入条数 · boost / penalty · 衰减 · 分层阈值</span>
+              </summary>
+              <div class="mem-params-grid">
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>检索阈值 θ_sim</b><em id="set-mem-theta-v">0.45</em></div>
+                  <input type="range" id="set-mem-theta" min="0.20" max="0.90" step="0.01" value="0.45" />
+                  <small>相似度低于此值的候选直接丢弃，调高更严格</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>最多注入条数</b><em id="set-mem-max-v">6</em></div>
+                  <input type="range" id="set-mem-max" min="1" max="12" step="1" value="6" />
+                  <small>普通记忆上限（VIP 另外最多 4 条）</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>注入字数上限</b><em id="set-mem-chars-v">360</em></div>
+                  <input type="range" id="set-mem-chars" min="120" max="800" step="20" value="360" />
+                  <small>拼进系统提示的总字数上限</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>采纳 boost</b><em id="set-mem-boost-v">+0.35</em></div>
+                  <input type="range" id="set-mem-boost" min="0" max="1.5" step="0.05" value="0.35" />
+                  <small>注入且没被标记 wrong 时的激活度增量</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>纠错 penalty</b><em id="set-mem-penalty-v">-0.50</em></div>
+                  <input type="range" id="set-mem-penalty" min="0" max="2" step="0.05" value="0.5" />
+                  <small>被 MEM_MARK 标记 wrong 时的激活度扣减</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>衰减强度 d</b><em id="set-mem-decay-v">×1.00</em></div>
+                  <input type="range" id="set-mem-decay" min="0.2" max="3" step="0.05" value="1" />
+                  <small>倍数乘到分档 d（偏好 0.3 / 事实 0.5 / 事件 0.8）</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>温层阈值 θ_warm</b><em id="set-mem-warm-v">0.45</em></div>
+                  <input type="range" id="set-mem-warm" min="0.05" max="1.2" step="0.01" value="0.45" />
+                  <small>激活度 ≤ 此值进温层（仍参与检索排序）</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>冷层阈值 θ_cold</b><em id="set-mem-cold-v">0.15</em></div>
+                  <input type="range" id="set-mem-cold" min="0.02" max="0.6" step="0.01" value="0.15" />
+                  <small>激活度 ≤ 此值进冷层（移出主索引）</small>
+                </div>
+                <div class="mem-param">
+                  <div class="mem-param-head"><b>挂起删除轮数</b><em id="set-mem-delete-v">50</em></div>
+                  <input type="range" id="set-mem-delete" min="5" max="200" step="5" value="50" />
+                  <small>冷层 + 低置信度连续满足这么多轮才真删</small>
+                </div>
+              </div>
+              <p class="mem-param-note">约束类记忆 d=0，永不衰减；置顶记忆不衰减、不参与删除。参数改动下一轮检索 / 结算即生效。</p>
+            </details>
+
+            <div class="mem-db-meta" id="mem-db-meta"></div>
+
+            <!-- Step 5：本轮注入列表，直接看检索命中了什么、为什么被滤掉 -->
+            <div class="mem-inject" id="mem-inject">
+              <div class="mem-inject-head">
+                <b>本轮注入</b>
+                <span id="mem-inject-meta">等待第一次检索…</span>
+              </div>
+              <div class="mem-inject-list" id="mem-inject-list"></div>
+            </div>
+
+            <div class="mem-tabs">
+              <button class="mem-tab active" data-tab="facts">记忆 <b id="mem-facts-count">0</b></button>
+              <button class="mem-tab" data-tab="archive">归档 <b id="mem-archive-count">0</b></button>
+            </div>
+            <div class="mem-panel" data-tab="facts" id="mem-facts-panel">
+              <div class="mem-layer-filter" id="mem-layer-filter">
+                <button class="mem-layer-btn active" data-layer="all">全部 <b id="mem-layer-all">0</b></button>
+                <button class="mem-layer-btn" data-layer="hot">热层 <b id="mem-layer-hot">0</b></button>
+                <button class="mem-layer-btn" data-layer="warm">温层 <b id="mem-layer-warm">0</b></button>
+                <button class="mem-layer-btn" data-layer="cold">冷层 <b id="mem-layer-cold">0</b></button>
+              </div>
+              <div id="mem-facts"></div>
+            </div>
+            <div class="mem-panel mem-tl" data-tab="archive" id="mem-archive" hidden></div>
+          </div>
+
+          <!-- 笔记（可选长期资料，不自动注入提示词） -->
+          <div class="settings-page" data-page="memory">
+            <div class="preset-head">
+              <div>
+                <h2>笔记</h2>
+                <p class="page-desc">每条笔记由标题 + 正文组成，正文最多 2000 字，可手动增删。笔记不会自动写进提示词，模型需要时通过 note 工具读取。</p>
+              </div>
+              <button class="btn-save" id="btn-add-memory">+ 新建笔记</button>
+            </div>
+            <div class="memory-list" id="memory-list"></div>
+            <div class="memory-form" id="memory-form" hidden>
+              <input id="memory-title" placeholder="笔记标题" />
+              <textarea id="memory-body" maxlength="2000" placeholder="笔记正文…（最多 2000 字）"></textarea>
+              <div class="memory-form-actions">
+                <button class="btn-ghost-sm" id="btn-cancel-memory">取消</button>
+                <button class="btn-save" id="btn-save-memory">保存</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 归档：清空对话时先存一份，避免误删 -->
+          <div class="settings-page" data-page="archive">
+            <div class="preset-head">
+              <div>
+                <h2>归档</h2>
+                <p class="page-desc">清空上下文不会真的删掉，旧会话会存到这里，随时可以翻阅。</p>
+              </div>
+              <button class="btn-ghost-sm" id="btn-archive-back" hidden>返回列表</button>
+            </div>
+            <div class="memory-list" id="archive-list"></div>
+            <div class="archive-viewer" id="archive-viewer" hidden>
+              <div class="archive-viewer-head">
+                <div>
+                  <b id="archive-viewer-title"></b>
+                  <span id="archive-viewer-meta"></span>
+                </div>
+                <button class="link-btn danger" id="btn-archive-delete">永久删除</button>
+                <button class="link-btn" id="btn-archive-close">收起</button>
+              </div>
+              <div class="archive-transcript" id="archive-transcript"></div>
+            </div>
+          </div>
+
+          <!-- 控制台（DSH 风格） -->
+          <div class="settings-page console-page" data-page="console">
+            <div class="console-head">
+              <h2>控制台</h2>
+              <span class="console-badge" id="console-mode-badge">MOCK</span>
+              <div class="console-head-right">
+                <span class="console-status" id="console-status">
+                  <span class="dsh-stat">动作 <b id="dsh-action">待机</b><span id="dsh-queue">队列 0</span></span>
+                  <span class="dsh-sep"></span>
+                  <span class="dsh-stat">轮次 <b id="dsh-rounds">0</b><span id="dsh-tokens">~0 tok</span></span>
+                  <span class="dsh-sep"></span>
+                  <span class="dsh-live" id="dsh-live">就绪</span>
+                  <button class="dsh-chip active" id="dsh-log-toggle" title="过程日志开关：关掉后只保留警告与错误">日志</button>
+                </span>
+                <span class="console-model" id="console-model">未配置模型</span>
+                <button class="link-btn" id="btn-console-export" title="导出会话为 JSON">导出</button>
+                <button class="link-btn" id="btn-console-clear">清空</button>
+              </div>
+            </div>
+            <div class="console-thread-wrap">
+              <div class="dsh-thread" id="console-log"></div>
+              <button class="console-jump" id="console-jump" title="回到底部" hidden>
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+              </button>
+            </div>
+            <div class="dsh-input-box">
+              <div
+                class="dsh-editor"
+                id="console-input"
+                contenteditable="true"
+                role="textbox"
+                aria-multiline="true"
+                data-placeholder="发消息或描述任务，/ 调用指令，@ 文件或对话"
+              ></div>
+              <div class="dsh-tools">
+                <button class="dsh-mode-chip" id="chip-think" data-mode="think" type="button" aria-pressed="false" disabled title="尚未配置思考参数">
+                  <span class="chip-icon" data-icon="think" aria-hidden="true"><svg viewBox="0 0 16 16"></svg></span>
+                  <span class="chip-label">深度思考</span>
+                </button>
+                <button class="dsh-mode-chip" id="chip-search" data-mode="search" type="button" aria-pressed="false" title="联网搜索（与工具管理同一个开关）">
+                  <span class="chip-icon" data-icon="globe" aria-hidden="true"><svg viewBox="0 0 16 16"></svg></span>
+                  <span class="chip-label">智能搜索</span>
+                </button>
+                <span class="dsh-grow"></span>
+                <button class="btn-send" id="btn-console-send" title="发送">
+                  <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 插件管理 -->
+          <div class="settings-page" data-page="plugins">
+            <div id="plugin-browser">
+              <div class="preset-head">
+                <div>
+                  <h2>插件管理</h2>
+                  <p class="page-desc">
+                    第三方插件跑在独立进程里，与内核隔离。插件包必须是 zip；导入时主进程会校验插件 ID、工具名唯一性和配置文件。
+                  </p>
+                </div>
+                <div class="ext-actions plugin-actions-bar">
+                  <div class="proc-panel is-collapsed" id="proc-panel">
+                    <button class="proc-head" id="proc-head" type="button" aria-expanded="false" aria-label="后台进程">
+                      <span class="proc-summary" id="proc-summary">进程状态读取中…</span>
+                      <svg class="proc-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                        <polyline points="18 15 12 9 6 15" />
+                      </svg>
+                    </button>
+                    <div class="proc-body" id="proc-body">
+                      <div class="proc-list" id="proc-list"></div>
+                    </div>
+                  </div>
+                  <button class="plugin-icon-btn" id="btn-plugin-open-root" title="打开插件目录" aria-label="打开插件目录">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3.5 7.5a1.7 1.7 0 0 1 1.7-1.7h3.1l1.8 2h8.7a1.7 1.7 0 0 1 1.7 1.7v7.8a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7z" />
+                    </svg>
+                  </button>
+                  <button class="plugin-icon-btn" id="btn-plugin-refresh" title="刷新插件列表" aria-label="刷新插件列表">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20 11a8 8 0 1 1-2.6-5.9" />
+                      <path d="M20 4v5h-5" />
+                    </svg>
+                  </button>
+                  <button class="btn-ghost-sm plugin-add-btn" id="btn-plugin-import">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                    添加插件
+                  </button>
+                  <button class="plugin-icon-btn" id="btn-plugin-more" title="更多操作" aria-label="更多操作">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5" /></svg>
+                  </button>
+                  <div class="split-menu" id="plugin-more-menu" hidden>
+                    <button class="split-menu-item" id="btn-plugin-root">更改目录</button>
+                    <button class="split-menu-item" id="btn-plugin-clear-trash">清空回收目录</button>
+                  </div>
+                </div>
+              </div>
+              <p class="plugin-root-line">插件目录：<span id="plugin-root-path">读取中…</span></p>
+              <div class="plugin-list" id="plugin-list"></div>
+            </div>
+
+            <div id="plugin-detail" hidden>
+              <button class="plugin-back" id="btn-plugin-back" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                <span id="plugin-detail-back-label">插件</span>
+              </button>
+              <div class="plugin-detail-head">
+                <div class="plugin-detail-icon" id="plugin-detail-icon"></div>
+                <h2 id="plugin-detail-name"></h2>
+                <div class="plugin-detail-id" id="plugin-detail-id"></div>
+                <p class="plugin-detail-desc" id="plugin-detail-desc"></p>
+                <div class="plugin-badges" id="plugin-detail-badges"></div>
+              </div>
+              <div class="plugin-status" id="plugin-detail-status" hidden></div>
+              <div id="plugin-detail-config"></div>
+              <div class="plugin-detail-actions" id="plugin-detail-actions"></div>
+            </div>
+          </div>
+
+          <!-- 权限确认弹窗 -->
+          <div class="perm-modal-mask" id="perm-modal-mask" hidden>
+            <div class="perm-modal" role="dialog" aria-modal="true" aria-labelledby="perm-modal-title">
+              <div class="perm-modal-head">
+                <h3 id="perm-modal-title">确认启用完全权限？</h3>
+                <button class="perm-modal-close" id="perm-modal-close" aria-label="关闭">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+              </div>
+              <div class="perm-modal-body">
+                <div class="perm-modal-alert">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v6" />
+                    <path d="M12 16.6v.4" />
+                  </svg>
+                  <p id="perm-modal-text"></p>
+                </div>
+                <label class="perm-modal-check">
+                  <input type="checkbox" id="perm-modal-agree" />
+                  <span>我已了解风险，并愿意继续</span>
+                </label>
+              </div>
+              <div class="perm-modal-foot">
+                <button class="perm-modal-cancel" id="perm-modal-cancel">取消</button>
+                <button class="perm-modal-ok" id="perm-modal-ok" disabled>启用完全权限</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 角色 -->
+          <div class="settings-page" data-page="extensions">
+            <h2>角色</h2>
+            <p class="page-desc">切换当前角色。每个角色自带内核、动作库与人设，互不影响。</p>
+
+            <label class="setting-row">
+              <div><b>切换角色时归档当前会话</b><span>开启后，点击其他角色卡片会先把当前会话存入「设置 → 归档」再切换；关闭则直接切换，当前会话仍留在原角色</span></div>
+              <input type="checkbox" id="set-archive-on-switch" />
+            </label>
+
+            <!-- 角色卡片：末尾固定一张「导入」 -->
+            <div class="char-row" id="char-row"></div>
+
+            <!-- 角色详情：点卡片右上角「⋯」展开，不触发切换 -->
+            <div class="ext-card char-detail" id="char-detail" hidden></div>
+
+            <div class="ext-card">
+              <div class="ext-card-head">
+                <div>
+                  <b>动作</b>
+                  <span class="ext-current" id="ext-actions-current">0 个动作</span>
+                </div>
+                <div class="ext-actions">
+                  <button class="btn-save" id="btn-import-actions">导入动作 (.glb)</button>
+                  <button class="btn-ghost-sm" id="btn-import-action-list">导入动作列表 (.json)</button>
+                  <button class="btn-ghost-sm" id="btn-refresh-actions">刷新列表</button>
+                  <button class="btn-ghost-sm" id="btn-open-clips">打开目录</button>
+                </div>
+              </div>
+              <p class="ext-hint" id="ext-actions-hint">支持多选 <code>.glb</code>。动作名、时长、循环标记优先读取 GLB 的 extras，缺失时按文件名推断；导入后自动登记到 <code>_index.json</code>。</p>
+            </div>
+          </div>
+          </div>
+
+          <!-- 设置页常驻底栏：左边版本号，中间任务名，右边进度条；不随内容滚动 -->
+          <div class="settings-taskbar" id="settings-taskbar" data-status="idle">
+            <span class="taskbar-version" id="taskbar-version">v0.1.0</span>
+            <span class="taskbar-divider"></span>
+            <span class="taskbar-title" id="taskbar-title">空闲</span>
+            <span class="taskbar-detail" id="taskbar-detail"></span>
+            <span class="taskbar-pct" id="taskbar-pct"></span>
+            <span class="taskbar-track"><i class="taskbar-fill" id="taskbar-fill"></i></span>
+            <button class="taskbar-cancel" id="taskbar-cancel" hidden>取消</button>
+            <!-- 与主界面左上角 #btn-pin 同一功能：窗口是否始终置顶 -->
+            <button class="taskbar-pin" id="taskbar-pin" title="窗口置顶" aria-pressed="false">
+              <svg viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2z"/></svg>
+            </button>
+            <!-- 右下角贴边按钮：直接跳到控制台 -->
+            <button class="taskbar-console" id="taskbar-console" title="打开控制台">
+              <svg viewBox="0 0 24 24"><path d="M5 7l5 5-5 5"/><path d="M12.5 17H19"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 动作选择器 -->
+      <div class="panel action-picker" id="action-picker">
+        <div class="picker-head">
+          <input id="picker-search" placeholder="搜索动作名 / 动作代号…" spellcheck="false" />
+          <button class="link-btn" id="picker-advanced" title="显示 / 收起高阶动作">高阶 · 0</button>
+          <span class="close-panel" id="close-picker">✕</span>
+        </div>
+        <div class="picker-list" id="picker-list"></div>
+        <div class="picker-foot">
+          <span>加入位置</span>
+          <button class="mode-btn active" data-mode="end">队列末尾</button>
+          <button class="mode-btn" data-mode="front">队列最前</button>
+          <label class="picker-limit"><span>限时</span><input id="picker-seconds" type="number" min="0" step="1" placeholder="不限" /><span>秒</span></label>
+        </div>
+      </div>
+
+      <div class="toasts" id="toasts"></div>
+    </div>
+
+    <script src="./chip-icons.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

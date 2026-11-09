@@ -1,0 +1,4 @@
+// source-offset: 1111042..1111109
+// kind: tpl quote: ` len: 66 js-score: 2
+// ----------------------------------------------------------------
+:"";h.fragmentShader=h.fragmentShader.replace("#include <common>",

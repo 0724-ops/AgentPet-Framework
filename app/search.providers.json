@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "note": "自定义搜索供应商：模型页把「搜索供应商」切到「自定义」后生效，只读取 providers[0]。把 endpoint / path / method / headers / body / response 改成你要用的服务即可，保存文件后点「测试连接」立即生效，不用重启。可用模板变量：{{query}} {{maxResults}} {{apiKey}} {{zone}} {{language}}；字段值整段写成 {{maxResults}} 时会按数字发送。没填 Key 时，headers 里含 {{apiKey}} 的整条会被跳过。response 里的路径用点号表示，例如 data.results、results、web.pages。下面这份是可以直接跑的 AnySearch 示例，换成 Tavily / Bocha / 自建服务时只改配置，不用改代码。",
+  "providers": [
+    {
+      "id": "custom",
+      "label": "自定义示例",
+      "endpoint": "https://api.anysearch.com",
+      "path": "/v1/search",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer {{apiKey}}"
+      },
+      "body": {
+        "query": "{{query}}",
+        "max_results": "{{maxResults}}",
+        "zone": "cn",
+        "language": "zh-CN"
+      },
+      "response": {
+        "resultsPath": "data.results",
+        "title": "title",
+        "url": "url",
+        "snippet": "snippet",
+        "snippetFallback": "content",
+        "totalPath": "data.metadata.total_results",
+        "timePath": "data.metadata.search_time_ms"
+      },
+      "timeoutMs": 20000
+    }
+  ]
+}

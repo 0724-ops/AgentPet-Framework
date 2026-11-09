@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "appVersion": "0.1.0",
+  "appName": "AgentPet Framework",
+  "note": "全局组件配置（语音 / embedding / 搜索）。角色与内核不在这里：程序只是壳，所有角色（含内核与动作）都在 <DataRoot>/characters/<id>/ 下。界面上改的设置只写 localStorage，不回写本文件。",
+  "voice": {
+    "asr": {
+      "dir": "voice/asr",
+      "modelsDir": "voice/asr/models",
+      "engine": {
+        "type": "github-release",
+        "repo": "ggml-org/whisper.cpp",
+        "asset": "whisper-bin-x64.zip"
+      },
+      "model": {
+        "file": "ggml-base.bin",
+        "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+        "bytes": 147951465
+      }
+    }
+  },
+  "memory": {
+    "note": "长程记忆的本地 embedding 模型：和其他组件一样首次按需下载，不随仓库/发行包携带。每个角色的记忆库是独立的 memory.db。",
+    "dir": "models/bge-small-zh-v1.5",
+    "dim": 512,
+    "sources": [
+      "https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main",
+      "https://huggingface.co/Xenova/bge-small-zh-v1.5/resolve/main"
+    ],
+    "files": [
+      { "path": "config.json", "bytes": 716 },
+      { "path": "tokenizer.json", "bytes": 439125 },
+      { "path": "onnx/model_quantized.onnx", "bytes": 24010842 }
+    ]
+  },
+  "search": {
+    "note": "联网搜索（web_search 工具）。provider: anysearch / searxng / mock / custom；apiKey 留空则走 AnySearch 匿名免费额度。",
+    "provider": "anysearch",
+    "apiKey": "",
+    "endpoint": "https://api.anysearch.com",
+    "zone": "cn",
+    "language": "zh-CN",
+    "maxResults": 5,
+    "timeoutMs": 20000,
+    "maxTotalChars": 1800
+  }
+}

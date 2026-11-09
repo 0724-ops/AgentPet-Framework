@@ -1,0 +1,4 @@
+// source-offset: 485973..486152
+// kind: tpl quote: ` len: 178 js-score: 3
+// ----------------------------------------------------------------
+},uniforms:{envMap:{value:null},samples:{value:1},weights:{value:n},latitudinal:{value:!1},dTheta:{value:0},mipInt:{value:0},poleAxis:{value:i}},vertexShader:Gv(),fragmentShader:

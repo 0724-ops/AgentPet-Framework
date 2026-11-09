@@ -1,0 +1,4 @@
+// source-offset: 487479..487646
+// kind: tpl quote: ` len: 166 js-score: 3
+// ----------------------------------------------------------------
+,blending:ji,depthTest:!1,depthWrite:!1})}function A_(){return new Bt({name:"EquirectangularToCubeUV",uniforms:{envMap:{value:null}},vertexShader:Gv(),fragmentShader:

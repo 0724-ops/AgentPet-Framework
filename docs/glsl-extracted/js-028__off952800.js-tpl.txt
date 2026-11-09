@@ -1,0 +1,4 @@
+// source-offset: 952800..953426
+// kind: tpl quote: ` len: 625 js-score: 4
+// ----------------------------------------------------------------
+],Object.assign(v,b)}const m={Q284:_h,Q163:{value:c??_a()},...fc(s,"_MainTex",Bf,"_MainTex"),...p,Q287:ro(s,"_TintColor",[1,1,1,1]),Q80:ro(s,"_BlendTint",[1,1,1,1]),Q103:ro(s,"_DissolveEmissiveColor",[0,0,0,0]),Q136:ro(s,"_FresnelColor",[1,1,1,1]),...Q0(i,d),...Q0(i,f),...a?er:{}},g=new Bt({name:t?"vfx-base-v2-particle":"vfx-base-v2",defines:o,uniforms:m,vertexShader:(t==null?void 0:t.vertexShader)??MT,fragmentShader:ST+D4});return a&&(g.onBeforeRender=x4),vT(g,m,{...B0(d),...B0(f),...dc("_MainTex",Bf,"_MainTex"),...v,_TintColor:"Q287",_BlendTint:"Q80",_DissolveEmissiveColor:"Q103",_FresnelColor:"Q136"},h),g}const MT=

@@ -1,0 +1,41 @@
+# ============================================================
+# 仓库根 = si/（壳层 app/ + 完整内核 kernels/ + 语音 voice/）
+# 原则：代码、配置、小体积文档入库；运行时、模型、几 GB 的语音包不入库。
+# ============================================================
+/shelf/
+/workspace.xml
+# ---- 依赖 / 运行时 ----
+app/node_modules/
+logs/
+*.log
+
+# ---- IDE / 系统 ----
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 生成物 / 压缩包 ----
+docs/_work/
+app/memory/.tmp/
+*.zip
+*.tmp
+*.part
+app/verify.png
+
+# ---- 语音：运行时和模型不入库（按 zip 导入），代码与音色配置保留 ----
+voice/*
+!voice/tts/
+voice/tts/*
+!voice/tts/tts_server.py
+!voice/tts/voices.json
+!voice/tts/refs/
+
+# ---- 内核资产：角色 / 动作 / 贴图（~197MB）随发行包分发，不入库 ----
+kernels/*/assets/
+# 导入内核用的 assets 兜底 junction（指向上面的 assets，不跟版本走）
+kernels/assets
+
+# ---- 长程记忆 embedding 模型：跟语音组件一样首次按需下载，只入库说明 ----
+models/bge-small-zh-v1.5/
+!models/README.md

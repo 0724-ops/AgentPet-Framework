@@ -1,0 +1,52 @@
+// chunk "aT" — self-shadow (PCF) pars
+// source chars 901279..902832; WHITESPACE-ONLY reformat of the verbatim body above.
+// ${...} = JS template interpolation from the minified bundle.
+// ============================================================================
+
+uniform sampler2DShadow Q264;
+uniform mat4 Q265;
+uniform vec3 Q262;
+uniform vec2 Q259;
+uniform vec4 Q267;
+void R182(float offset,out vec3 a,out vec3 b) {
+	float R103=(offset+0.5)*(offset+0.5)*0.5;
+	float left=min(offset,0.0);
+	float right=max(offset,0.0);
+	float R210=1.0-offset;
+	float R211=1.0+offset;
+	a=0.16*vec3(R103-offset,R210,R210-left*left+1.0);
+	b=0.16*vec3(R211-right*right+1.0,R211,R103);
+
+}
+float R57(vec3 P,vec3 N) {
+	vec3 L=Q262;
+	float k=1.0-clamp(dot(N,L),0.0,0.9);
+	vec3 p=P+L*(Q259.x*k)+N*(Q259.y*k);
+	vec3 c=(Q265*vec4(p,1.0)).xyz;
+	if(c.x<=0.0||c.y<=0.0||c.x>=1.0||c.y>=1.0||c.z>=1.0)return 1.0;
+	float z=max(c.z,0.0);
+	vec2 t=c.xy*Q267.zw;
+	vec2 R56=floor(t+0.5);
+	vec2 off=t-R56;
+	vec3 R208,R209,va,vb;
+	R182(off.x,R208,R209);
+	R182(off.y,va,vb);
+	vec3 R229=vec3(R208.x+R208.y,R208.z+R209.x,R209.y+R209.z);
+	vec3 R230=vec3(va.x+va.y,va.z+vb.x,vb.y+vb.z);
+	vec3 R138=(vec3(R208.y,R209.x,R209.z)/R229+vec3(-2.5,-0.5,1.5))*Q267.x;
+	vec3 R143=(vec3(va.y,vb.x,vb.z)/R230+vec3(-2.5,-0.5,1.5))*Q267.y;
+	vec2 o=R56*Q267.xy;
+	float s=0.0;
+	s+=R229.x*R230.x*texture(Q264,vec3(o+vec2(R138.x,R143.x),z));
+	s+=R229.y*R230.x*texture(Q264,vec3(o+vec2(R138.y,R143.x),z));
+	s+=R229.z*R230.x*texture(Q264,vec3(o+vec2(R138.z,R143.x),z));
+	s+=R229.x*R230.y*texture(Q264,vec3(o+vec2(R138.x,R143.y),z));
+	s+=R229.y*R230.y*texture(Q264,vec3(o+vec2(R138.y,R143.y),z));
+	s+=R229.z*R230.y*texture(Q264,vec3(o+vec2(R138.z,R143.y),z));
+	s+=R229.x*R230.z*texture(Q264,vec3(o+vec2(R138.x,R143.z),z));
+	s+=R229.y*R230.z*texture(Q264,vec3(o+vec2(R138.y,R143.z),z));
+	s+=R229.z*R230.z*texture(Q264,vec3(o+vec2(R138.z,R143.z),z));
+	return s;
+
+}
+

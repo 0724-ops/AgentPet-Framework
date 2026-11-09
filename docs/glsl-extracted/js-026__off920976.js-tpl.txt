@@ -1,0 +1,4 @@
+// source-offset: 920976..921494
+// kind: tpl quote: ` len: 517 js-score: 4
+// ----------------------------------------------------------------
+,uniforms:{...this.rig.uniforms,...this.rig.cut,...$b(t),Q193:{value:i._OutlineMask??null},Q197:{value:r._OutlineWidth??.5},Q194:{value:r._OutlineOffsetZ??0},Q192:{value:c},Q191:{value:r._OutlineColorBrightness??.5},Q195:{value:r._OutlineColorSaturation??1},Q196:{value:new ce().setRGB(l[0],l[1],l[2],Mt)}},defines:o,vertexShader:m4,fragmentShader:g4,side:vn});u.onBeforeRender=p=>{const v=p.getRenderTarget();v?c.set(v.width,v.height):p.getDrawingBufferSize(c)},a&&u4(e.geometry);const h=new sl(e.geometry,u);h.name=

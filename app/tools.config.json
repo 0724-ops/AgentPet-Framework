@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "tools": [
+    {
+      "name": "play_action",
+      "label": "执行动作",
+      "icon": "command",
+      "enabled": true,
+      "prompt": "把一个或多个动作加入 {{char}} 的动作队列并按顺序播放。循环动作会一直保持，直到被替换；seconds 可以给循环动作设置播放上限，到点自动回待机。执行动作是真实的表演，不要用台词描述“我挥了挥手”来代替调用。",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "actions": {
+            "type": "array",
+            "description": "要加入队列的动作，按数组顺序播放",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "动作名，例如 dialog_single_wave"
+                },
+                "seconds": {
+                  "type": "number",
+                  "description": "这个循环动作的播放上限（秒）。到点自动回待机；不填表示一直循环。"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            }
+          },
+          "action": {
+            "type": "string",
+            "description": "单个动作名（只在只加一个动作时使用，和 actions 二选一）"
+          },
+          "seconds": {
+            "type": "number",
+            "description": "单个动作的循环上限（秒），配合 action 使用"
+          },
+          "front": {
+            "type": "boolean",
+            "description": "true 表示插到队列最前，默认追加到队尾"
+          }
+        }
+      },
+      "aliases": []
+    },
+    {
+      "name": "get_state",
+      "label": "读取状态",
+      "icon": "note",
+      "enabled": true,
+      "prompt": "读取 {{char}} 此刻的实时状态：内核是否空闲、当前正在播的动作与进度、动作队列里还有什么、模型缩放/朝向、鼠标跟随等。想接话或决定要不要插动作前先读它。",
+      "schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "aliases": []
+    },
+    {
+      "name": "manage_note",
+      "label": "笔记",
+      "icon": "note",
+      "enabled": true,
+      "aliases": [
+        "note",
+        "memory"
+      ],
+      "prompt": "管理跨会话笔记。笔记不会自动注入系统提示，只有调用本工具才能看到内容。action=list 只列标题；read 按标题读取正文；write 新建；edit 修改正文或标题；rm 删除。执行 edit 或 rm 之前，必须先在本轮会话里 read 过对应笔记，否则会被拒绝。正文单条最多 2000 字，超长会被拒绝写入。",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "list",
+              "read",
+              "write",
+              "edit",
+              "rm"
+            ],
+            "description": "要执行的操作"
+          },
+          "title": {
+            "type": "string",
+            "description": "笔记标题；除 list 外都必填"
+          },
+          "new_title": {
+            "type": "string",
+            "description": "仅 edit：修改后的标题，不填则保持原名"
+          },
+          "body": {
+            "type": "string",
+            "description": "仅 write / edit：完整正文，最多 2000 字"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "list_advanced_actions",
+      "label": "高阶动作",
+      "icon": "command",
+      "enabled": false,
+      "prompt": "列出系统提示里没给的「高阶动作」（战斗、演出、特殊状态链、衍生动作等），带中文名、时长和用法说明。常用动作不在这里。需要演某类动作但 ACTIONS 里没有时先调用它。",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "按动作名或说明过滤，例如 坐、生气、attack、walk；不填返回全部高阶动作"
+          }
+        }
+      },
+      "aliases": []
+    },
+    {
+      "name": "read_image",
+      "label": "读取图片",
+      "icon": "image",
+      "enabled": true,
+      "prompt": "读取一张本地图片并查看画面内容。用户把图片拖进输入框、或在消息里写出图片路径后，对话里只会出现路径文本；需要真正看清画面时调用本工具，参数是图片的绝对路径。支持 png / jpg / jpeg / webp / gif / bmp，单张不超过 20MB。一次只读一张，需要看多张就多次调用。",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "图片的绝对路径，例如 C:/Users/me/Pictures/shot.png"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "aliases": []
+    },
+    {
+      "name": "web_search",
+      "label": "联网搜索",
+      "icon": "search",
+      "enabled": false,
+      "prompt": "当你不知道最新资讯、或者需要查询实时信息时，可以调用 web_search 工具。请提取核心关键词作为参数传入。",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词；用简洁的关键词或短句，不要整段复制用户原话"
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "返回结果条数，1-5，默认 3",
+            "minimum": 1,
+            "maximum": 5
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "aliases": []
+    }
+  ]
+}

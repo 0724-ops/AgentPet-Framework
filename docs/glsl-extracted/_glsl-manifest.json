@@ -1,0 +1,617 @@
+{
+  "file": "vendor\\site\\Da0XtQgu.js",
+  "totalLiterals": 2046,
+  "glsl": [
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 511296,
+      "bodyStart": 511297,
+      "end": 516628,
+      "bodyEnd": 516628,
+      "parts": [
+        [
+          511297,
+          516628
+        ]
+      ],
+      "sc": 46
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 516651,
+      "bodyStart": 516652,
+      "end": 519962,
+      "bodyEnd": 519962,
+      "parts": [
+        [
+          516652,
+          519962
+        ]
+      ],
+      "sc": 20
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 520202,
+      "bodyStart": 520203,
+      "end": 520749,
+      "bodyEnd": 520749,
+      "parts": [
+        [
+          520203,
+          520749
+        ]
+      ],
+      "sc": 26
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 1081544,
+      "bodyStart": 1081545,
+      "end": 1086009,
+      "bodyEnd": 1086009,
+      "parts": [
+        [
+          1081545,
+          1086009
+        ]
+      ],
+      "sc": 9
+    }
+  ],
+  "jsish": [
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 267406,
+      "bodyStart": 267407,
+      "end": 270264,
+      "bodyEnd": 270264,
+      "parts": [
+        [
+          267407,
+          270264
+        ]
+      ],
+      "sc": 2
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 304671,
+      "bodyStart": 304672,
+      "end": 312633,
+      "bodyEnd": 312633,
+      "parts": [
+        [
+          304672,
+          312633
+        ]
+      ],
+      "sc": 32
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 313254,
+      "bodyStart": 313255,
+      "end": 320549,
+      "bodyEnd": 320549,
+      "parts": [
+        [
+          313255,
+          320549
+        ]
+      ],
+      "sc": 7
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 455174,
+      "bodyStart": 455175,
+      "end": 484335,
+      "bodyEnd": 484335,
+      "parts": [
+        [
+          455175,
+          484335
+        ]
+      ],
+      "sc": 80
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 485973,
+      "bodyStart": 485974,
+      "end": 486152,
+      "bodyEnd": 486152,
+      "parts": [
+        [
+          485974,
+          486152
+        ]
+      ],
+      "sc": 3
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 487479,
+      "bodyStart": 487480,
+      "end": 487646,
+      "bodyEnd": 487646,
+      "parts": [
+        [
+          487480,
+          487646
+        ]
+      ],
+      "sc": 3
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 487983,
+      "bodyStart": 487984,
+      "end": 488164,
+      "bodyEnd": 488164,
+      "parts": [
+        [
+          487984,
+          488164
+        ]
+      ],
+      "sc": 3
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 509935,
+      "bodyStart": 509936,
+      "end": 511029,
+      "bodyEnd": 511029,
+      "parts": [
+        [
+          509936,
+          511029
+        ]
+      ],
+      "sc": 2
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 521583,
+      "bodyStart": 521584,
+      "end": 523928,
+      "bodyEnd": 523928,
+      "parts": [
+        [
+          521584,
+          523928
+        ]
+      ],
+      "sc": 8
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 523935,
+      "bodyStart": 523936,
+      "end": 543195,
+      "bodyEnd": 543195,
+      "parts": [
+        [
+          523936,
+          543195
+        ]
+      ],
+      "sc": 11
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 544311,
+      "bodyStart": 544312,
+      "end": 561686,
+      "bodyEnd": 561686,
+      "parts": [
+        [
+          544312,
+          561686
+        ]
+      ],
+      "sc": 9
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 597340,
+      "bodyStart": 597341,
+      "end": 617373,
+      "bodyEnd": 617373,
+      "parts": [
+        [
+          597341,
+          617373
+        ]
+      ],
+      "sc": 9
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 617389,
+      "bodyStart": 617390,
+      "end": 669836,
+      "bodyEnd": 669836,
+      "parts": [
+        [
+          617390,
+          669836
+        ]
+      ],
+      "sc": 22
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 735826,
+      "bodyStart": 735827,
+      "end": 765291,
+      "bodyEnd": 765291,
+      "parts": [
+        [
+          735827,
+          765291
+        ]
+      ],
+      "sc": 2
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 765356,
+      "bodyStart": 765357,
+      "end": 792295,
+      "bodyEnd": 792295,
+      "parts": [
+        [
+          765357,
+          792295
+        ]
+      ],
+      "sc": 20
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 792353,
+      "bodyStart": 792354,
+      "end": 869449,
+      "bodyEnd": 869449,
+      "parts": [
+        [
+          792354,
+          869449
+        ]
+      ],
+      "sc": 9
+    },
+    {
+      "kind": "str",
+      "quote": "'",
+      "start": 873856,
+      "bodyStart": 873857,
+      "end": 876052,
+      "bodyEnd": 876052,
+      "sc": 2
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 876385,
+      "bodyStart": 876386,
+      "end": 881565,
+      "bodyEnd": 881565,
+      "parts": [
+        [
+          876386,
+          881565
+        ]
+      ],
+      "sc": 14
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 882810,
+      "bodyStart": 882811,
+      "end": 885315,
+      "bodyEnd": 885315,
+      "parts": [
+        [
+          882811,
+          885315
+        ]
+      ],
+      "sc": 12
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 885962,
+      "bodyStart": 885963,
+      "end": 891480,
+      "bodyEnd": 891480,
+      "parts": [
+        [
+          885963,
+          891480
+        ]
+      ],
+      "sc": 32
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 892394,
+      "bodyStart": 892395,
+      "end": 892713,
+      "bodyEnd": 892713,
+      "parts": [
+        [
+          892395,
+          892713
+        ]
+      ],
+      "sc": 2
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 902832,
+      "bodyStart": 902833,
+      "end": 906638,
+      "bodyEnd": 906638,
+      "parts": [
+        [
+          902833,
+          906638
+        ]
+      ],
+      "sc": 7
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 906669,
+      "bodyStart": 906670,
+      "end": 906854,
+      "bodyEnd": 906854,
+      "parts": [
+        [
+          906670,
+          906854
+        ]
+      ],
+      "sc": 3
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 907509,
+      "bodyStart": 907510,
+      "end": 908280,
+      "bodyEnd": 908280,
+      "parts": [
+        [
+          907510,
+          908280
+        ]
+      ],
+      "sc": 5
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 909347,
+      "bodyStart": 909348,
+      "end": 920540,
+      "bodyEnd": 920540,
+      "parts": [
+        [
+          909348,
+          920540
+        ]
+      ],
+      "sc": 9
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 920557,
+      "bodyStart": 920558,
+      "end": 920956,
+      "bodyEnd": 920956,
+      "parts": [
+        [
+          920558,
+          920956
+        ]
+      ],
+      "sc": 3
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 920976,
+      "bodyStart": 920977,
+      "end": 921494,
+      "bodyEnd": 921494,
+      "parts": [
+        [
+          920977,
+          921494
+        ]
+      ],
+      "sc": 4
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 947569,
+      "bodyStart": 947570,
+      "end": 950123,
+      "bodyEnd": 950123,
+      "parts": [
+        [
+          947570,
+          950123
+        ]
+      ],
+      "sc": 3
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 952800,
+      "bodyStart": 952801,
+      "end": 953426,
+      "bodyEnd": 953426,
+      "parts": [
+        [
+          952801,
+          953426
+        ]
+      ],
+      "sc": 4
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 961570,
+      "bodyStart": 961571,
+      "end": 969132,
+      "bodyEnd": 969132,
+      "parts": [
+        [
+          961571,
+          969132
+        ]
+      ],
+      "sc": 3
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 970302,
+      "bodyStart": 970303,
+      "end": 972243,
+      "bodyEnd": 972243,
+      "parts": [
+        [
+          970303,
+          972243
+        ]
+      ],
+      "sc": 5
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 1018049,
+      "bodyStart": 1018050,
+      "end": 1021498,
+      "bodyEnd": 1021498,
+      "parts": [
+        [
+          1018050,
+          1021498
+        ]
+      ],
+      "sc": 5
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 1048856,
+      "bodyStart": 1048857,
+      "end": 1049895,
+      "bodyEnd": 1049895,
+      "parts": [
+        [
+          1048857,
+          1049895
+        ]
+      ],
+      "sc": 6
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 1050078,
+      "bodyStart": 1050079,
+      "end": 1057683,
+      "bodyEnd": 1057683,
+      "parts": [
+        [
+          1050079,
+          1057683
+        ]
+      ],
+      "sc": 5
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 1075877,
+      "bodyStart": 1075878,
+      "end": 1077715,
+      "bodyEnd": 1077715,
+      "parts": [
+        [
+          1075878,
+          1077715
+        ]
+      ],
+      "sc": 4
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 1105825,
+      "bodyStart": 1105826,
+      "end": 1110534,
+      "bodyEnd": 1110534,
+      "parts": [
+        [
+          1105826,
+          1110534
+        ]
+      ],
+      "sc": 8
+    },
+    {
+      "kind": "tpl",
+      "quote": "`",
+      "start": 1111042,
+      "bodyStart": 1111043,
+      "end": 1111109,
+      "bodyEnd": 1111109,
+      "parts": [
+        [
+          1111043,
+          1111109
+        ]
+      ],
+      "sc": 2
+    }
+  ]
+}

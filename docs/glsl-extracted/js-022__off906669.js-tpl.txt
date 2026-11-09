@@ -1,0 +1,4 @@
+// source-offset: 906669..906854
+// kind: tpl quote: ` len: 184 js-score: 3
+// ----------------------------------------------------------------
+,defines:e,uniforms:{Q71:{value:s.map},Q306:{value:s.uv1Alpha??null},Q190:{value:s.opacity},Q65:{value:s.alphaTest}},vertexShader:FB,fragmentShader:kB,side:Sn,colorWrite:!1})}const FB=

@@ -1,0 +1,119 @@
+[
+  {
+    "name": "dT",
+    "label": "helpers (R205 saturation, R200 base)",
+    "start": 924236,
+    "end": 924484,
+    "len": 248,
+    "rawFile": "chunk-dT.raw.glsl",
+    "fmtFile": "chunk-dT.fmt.glsl"
+  },
+  {
+    "name": "f4",
+    "label": "character point-light loop (R43)",
+    "start": 925460,
+    "end": 927005,
+    "len": 1545,
+    "rawFile": "chunk-f4.raw.glsl",
+    "fmtFile": "chunk-f4.fmt.glsl"
+  },
+  {
+    "name": "h4",
+    "label": "character vertex shader",
+    "start": 924490,
+    "end": 925014,
+    "len": 524,
+    "rawFile": "chunk-h4.raw.glsl",
+    "fmtFile": "chunk-h4.fmt.glsl"
+  },
+  {
+    "name": "p4",
+    "label": "character fragment shader",
+    "start": 927011,
+    "end": 939121,
+    "len": 12110,
+    "rawFile": "chunk-p4.raw.glsl",
+    "fmtFile": "chunk-p4.fmt.glsl"
+  },
+  {
+    "name": "m4",
+    "label": "outline vertex shader",
+    "start": 939127,
+    "end": 940291,
+    "len": 1164,
+    "rawFile": "chunk-m4.raw.glsl",
+    "fmtFile": "chunk-m4.fmt.glsl"
+  },
+  {
+    "name": "g4",
+    "label": "outline fragment shader",
+    "start": 940297,
+    "end": 940765,
+    "len": 468,
+    "rawFile": "chunk-g4.raw.glsl",
+    "fmtFile": "chunk-g4.fmt.glsl"
+  },
+  {
+    "name": "aT",
+    "label": "self-shadow (PCF) pars",
+    "start": 901279,
+    "end": 902832,
+    "len": 1553,
+    "rawFile": "chunk-aT.raw.glsl",
+    "fmtFile": "chunk-aT.fmt.glsl"
+  },
+  {
+    "name": "cT",
+    "label": "clip/dissolve field",
+    "start": 908961,
+    "end": 909347,
+    "len": 386,
+    "rawFile": "chunk-cT.raw.glsl",
+    "fmtFile": "chunk-cT.fmt.glsl"
+  },
+  {
+    "name": "VB",
+    "label": "self-shadow debug pass",
+    "start": 908423,
+    "end": 908775,
+    "len": 352,
+    "rawFile": "chunk-VB.raw.glsl",
+    "fmtFile": "chunk-VB.fmt.glsl"
+  },
+  {
+    "name": "MT",
+    "label": "VFX vertex shader",
+    "start": 953427,
+    "end": 954684,
+    "len": 1257,
+    "rawFile": "chunk-MT.raw.glsl",
+    "fmtFile": "chunk-MT.fmt.glsl"
+  },
+  {
+    "name": "ST",
+    "label": "VFX fragment shader (head)",
+    "start": 954690,
+    "end": 956094,
+    "len": 1404,
+    "rawFile": "chunk-ST.raw.glsl",
+    "fmtFile": "chunk-ST.fmt.glsl"
+  },
+  {
+    "name": "L4",
+    "label": "VFX fragment shader (tail)",
+    "start": 956100,
+    "end": 957967,
+    "len": 1867,
+    "rawFile": "chunk-L4.raw.glsl",
+    "fmtFile": "chunk-L4.fmt.glsl"
+  },
+  {
+    "name": "D4",
+    "label": "VFX fragment shader (base v2)",
+    "start": 957973,
+    "end": 961570,
+    "len": 3597,
+    "rawFile": "chunk-D4.raw.glsl",
+    "fmtFile": "chunk-D4.fmt.glsl"
+  }
+]

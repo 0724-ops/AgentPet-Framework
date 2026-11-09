@@ -1,0 +1,4 @@
+// source-offset: 920557..920956
+// kind: tpl quote: ` len: 398 js-score: 3
+// ----------------------------------------------------------------
+,uniforms:y,defines:c,vertexShader:h4,fragmentShader:p4});return c4(e,E),E.userData=e.userData,E}addOutline(e,t,n,i){var d,f;const r=n.floats??{},o=Jb(t);r._EnableOutlineMask===1&&i._OutlineMask&&(o.Q15="");const a=(r._OutlineAverageNormal??0)>.5;a&&(o.Q26=""),(r._OutlineTintEnable??0)!==0&&(o.Q16="");const l=((d=n.colors)==null?void 0:d._OutlineTintColor)??[1,1,1,1],c=new j(1,1),u=new Bt({name:
