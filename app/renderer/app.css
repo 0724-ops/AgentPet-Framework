@@ -6159,6 +6159,61 @@ html[data-visual-off] .stage {
   cursor: not-allowed;
 }
 
+/* ---- 删除角色：验证码 ---- */
+.char-del-code-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.char-del-code-label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.char-del-code {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 18px;
+  letter-spacing: 5px;
+  color: #f2f2f2;
+  user-select: none;
+}
+
+.char-del-otp {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.char-del-otp-input {
+  width: 44px;
+  height: 52px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 20px;
+  text-align: center;
+  outline: none;
+  caret-color: var(--accent);
+}
+
+.char-del-otp-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(108, 192, 166, 0.22);
+}
+
+.char-del-otp-input.filled {
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
 .plugin-icon {
   width: 42px;
   height: 42px;

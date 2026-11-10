@@ -481,6 +481,13 @@ const el = {
   permModalOk: $('#perm-modal-ok'),
   permModalCancel: $('#perm-modal-cancel'),
   permModalClose: $('#perm-modal-close'),
+  charDelMask: $('#char-del-mask'),
+  charDelText: $('#char-del-text'),
+  charDelCode: $('#char-del-code'),
+  charDelOtp: $('#char-del-otp'),
+  charDelOk: $('#char-del-ok'),
+  charDelCancel: $('#char-del-cancel'),
+  charDelClose: $('#char-del-close'),
   consoleLog: $('#console-log'),
   consoleJump: $('#console-jump'),
   consoleInput: $('#console-input'),
@@ -2978,6 +2985,121 @@ if (el.permModalClose) el.permModalClose.addEventListener('click', () => closePe
 if (el.permModalMask) {
   el.permModalMask.addEventListener('click', (e) => {
     if (e.target === el.permModalMask) closePermModal(false);
+  });
+}
+
+// ---- 删除角色：6 位验证码（防误删）。字符集去掉了 0/O/1/l/I 这类容易看混的字符
+const DEL_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+
+function makeDeleteCode(len = 6) {
+  const bytes = new Uint8Array(len);
+  if (window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < len; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  let out = '';
+  for (let i = 0; i < len; i += 1) out += DEL_CODE_ALPHABET[bytes[i] % DEL_CODE_ALPHABET.length];
+  return out;
+}
+
+function openDeleteCharModal(ch) {
+  return new Promise((resolve) => {
+    const mask = el.charDelMask;
+    if (!mask) {
+      resolve(false);
+      return;
+    }
+    const code = makeDeleteCode(6);
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      mask.hidden = true;
+      el.charDelOtp.onpaste = null;
+      el.charDelOk.onclick = null;
+      el.charDelCancel.onclick = null;
+      el.charDelClose.onclick = null;
+      mask.onclick = null;
+      resolve(value);
+    };
+
+    el.charDelText.textContent = `即将删除角色「${ch.name || ch.id}」。该角色目录里的内核、动作库、会话记录与全部记忆会被永久删除，无法恢复。请输入下方验证码确认。`;
+    el.charDelCode.textContent = code;
+    el.charDelOtp.textContent = '';
+
+    const inputs = [];
+    for (let i = 0; i < code.length; i += 1) {
+      const input = document.createElement('input');
+      input.className = 'char-del-otp-input';
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.maxLength = 1;
+      input.setAttribute('aria-label', `验证码第 ${i + 1} 位`);
+      el.charDelOtp.appendChild(input);
+      inputs.push(input);
+    }
+
+    const sync = () => {
+      inputs.forEach((node) => node.classList.toggle('filled', !!node.value));
+      el.charDelOk.disabled = inputs.map((node) => node.value).join('') !== code;
+    };
+
+    inputs.forEach((input, index) => {
+      input.addEventListener('input', () => {
+        // 输入法可能一次送来多个字符，只留最后一个
+        input.value = input.value.replace(/\s+/g, '').slice(-1);
+        if (input.value && index < inputs.length - 1) inputs[index + 1].focus();
+        sync();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && index > 0) {
+          e.preventDefault();
+          inputs[index - 1].value = '';
+          inputs[index - 1].focus();
+          sync();
+        } else if (e.key === 'ArrowLeft' && index > 0) {
+          e.preventDefault();
+          inputs[index - 1].focus();
+        } else if (e.key === 'ArrowRight' && index < inputs.length - 1) {
+          e.preventDefault();
+          inputs[index + 1].focus();
+        } else if (e.key === 'Enter' && !el.charDelOk.disabled) {
+          finish(true);
+        } else if (e.key === 'Escape') {
+          // 别让全局 Esc 顺手把设置面板一起关掉
+          e.stopPropagation();
+          finish(false);
+        }
+      });
+      input.addEventListener('focus', () => input.select());
+    });
+
+    el.charDelOtp.onpaste = (e) => {
+      const text = ((e.clipboardData || window.clipboardData).getData('text') || '').replace(/\s+/g, '');
+      if (!text) return;
+      e.preventDefault();
+      const chars = Array.from(text).slice(0, inputs.length);
+      inputs.forEach((node, i) => {
+        node.value = chars[i] || '';
+      });
+      (inputs[chars.length] || inputs[inputs.length - 1]).focus();
+      sync();
+    };
+
+    el.charDelOk.onclick = () => {
+      if (!el.charDelOk.disabled) finish(true);
+    };
+    el.charDelCancel.onclick = () => finish(false);
+    el.charDelClose.onclick = () => finish(false);
+    mask.onclick = (e) => {
+      if (e.target === mask) finish(false);
+    };
+
+    el.charDelOk.disabled = true;
+    mask.hidden = false;
+    requestAnimationFrame(() => inputs[0] && inputs[0].focus());
   });
 }
 
@@ -7089,7 +7211,7 @@ function renderCharDetail() {
     '删除',
     'btn-ghost-sm danger',
     async () => {
-      if (!window.confirm(`删除角色「${ch.name || ch.id}」？\n\n角色目录（内核 / 动作 / 会话 / 记忆）会被永久删除，无法恢复。`)) return;
+      if (!(await openDeleteCharModal(ch))) return;
       const r = await window.petApi.deleteCharacter(ch.id);
       if (!r || !r.ok) {
         toast((r && r.error) || '删除失败', 'warn');
