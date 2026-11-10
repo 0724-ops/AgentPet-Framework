@@ -233,36 +233,39 @@ function promptDataRoot(problem) {
   for (;;) {
     const changing = problem === 'change';
     const unreachable = problem === 'unreachable';
-    const { response } = dialog.showMessageBoxSync({
+    const askedAt = Date.now();
+    // 注意：showMessageBoxSync 返回的是按钮索引（number），不是 { response } 对象
+    const response = dialog.showMessageBoxSync({
       type: unreachable ? 'warning' : 'question',
       title: '选择数据目录',
       message: unreachable ? '数据目录不可用' : changing ? '更换数据目录' : '首次启动：选择数据目录',
       detail: unreachable
         ? `指针指向的目录找不到了：\n${ROOT_STATE.pointerRoot}\n\n角色、插件、记忆都在这个目录里，请重新指定（或把原来的磁盘插回来）。`
-        : `角色包、插件、记忆和会话都会存到这个目录，不占 C 盘。\n\n建议位置：\n${suggested}${changing ? '\n\n注意：只切换位置，不做迁移。旧目录里的角色和记忆会原样保留，需要你自己复制或删除。' : ''}`,
-      buttons: ['选择目录…', '使用建议位置', '退出'],
+        : `角色包、插件、记忆和会话都会存到这个目录，不占 C 盘。${changing ? '\n\n注意：只切换位置，不做迁移。旧目录里的角色和记忆会原样保留，需要你自己复制或删除。' : ''}`,
+      buttons: ['选择目录…', '退出'],
       defaultId: 0,
-      cancelId: 2,
+      cancelId: 1,
       noLink: true,
     });
-    if (response === 2) return false;
-    let dir = suggested;
-    if (response === 0) {
-      const picked = dialog.showOpenDialogSync({
-        title: '选择数据目录',
-        defaultPath: suggested,
-        properties: ['openDirectory', 'createDirectory'],
-      });
-      if (!picked || !picked.length) continue;
-      dir = picked[0];
-    }
+    log(`[data-root] 引导弹窗 response=${response} 等待=${Date.now() - askedAt}ms`);
+    if (response !== 0) return false;
+    // defaultPath 只作为选择框的初始浏览位置，不再提供「直接使用默认目录」的入口
+    const picked = dialog.showOpenDialogSync({
+      title: '选择数据目录',
+      defaultPath: suggested,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (!picked || !picked.length) continue;
+    const dir = picked[0];
+    log(`[data-root] 选定目录 ${dir}`);
     const check = dataRoot.validate(dir, { appDir: PROGRAM_ROOT, appDataBase: APP_DATA_BASE, appName: APP_NAME });
     if (!check.ok) {
+      log(`[data-root] 目录校验失败 ${check.error}`);
       dialog.showErrorBox('目录不可用', check.error);
       continue;
     }
     if (!check.fresh) {
-      const { response: sure } = dialog.showMessageBoxSync({
+      const sure = dialog.showMessageBoxSync({
         type: 'question',
         title: '确认目录',
         message: '该目录不是空的',
