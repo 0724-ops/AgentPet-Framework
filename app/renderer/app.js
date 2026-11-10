@@ -6871,6 +6871,7 @@ function renderCharacterCards() {
     }
     if (imp.disabled) return;
     imp.disabled = true;
+    const hadActive = !!activeCharacter;
     try {
       const res = await window.petApi.importCharacter();
       if (!res || res.canceled) return;
@@ -6880,6 +6881,16 @@ function renderCharacterCards() {
       }
       // 重新拉配置：新角色会立即出现在卡片列表里（切换仍是下一阶段）
       await loadAppConfig();
+      // 首次导入（此前没有任何角色）：新角色会被自动设为当前角色，直接把内核挂起来
+      if (!hadActive && activeCharacter) {
+        await loadChatSession();
+        await fetchActions(true);
+        presetPersonaDirty = false;
+        await loadPresetPersona();
+        syncRenderBackendUi();
+        renderChat();
+        if (!IS_PANEL) mountKernel(currentKernelEntry());
+      }
       renderExtensionPage();
       toast(`已导入角色：${(res.character && res.character.name) || res.id}`);
     } catch (err) {
@@ -6930,6 +6941,9 @@ async function onCharacterCard(ch) {
     // 重新装配：角色名 / 会话 / 动作库 / 内核入口 / 记忆库都按新角色来
     await loadAppConfig();
     applyUiNames();
+    // 人设跟着角色走：重新读新角色目录里的 persona.md
+    presetPersonaDirty = false;
+    await loadPresetPersona();
     await loadChatSession();
     // fetchActions(true) 内部会先刷新 actions.json 的中文名与分类
     await fetchActions(true);
@@ -6955,6 +6969,8 @@ async function onCharacterCard(ch) {
     }
     await loadAppConfig();
     applyUiNames();
+    presetPersonaDirty = false;
+    await loadPresetPersona();
     await loadChatSession();
     await fetchActions(true);
     syncRenderBackendUi();
@@ -8438,13 +8454,13 @@ function lineNumbersFor(textarea) {
   gutter.scrollTop = textarea.scrollTop;
 }
 
-// 人设来自 si/app/preset-persona.md（磁盘是唯一真相源，程序不内置默认人设）
+// 人设来自当前角色目录的 persona.md（磁盘是唯一真相源，程序不内置默认人设）
 function getPersonaText() {
   return personaMd;
 }
 
 async function readPresetText(apiName) {
-  const out = { text: '', path: '', exists: false };
+  const out = { text: '', path: '', exists: false, characterScoped: false };
   try {
     const fn = window.petApi && window.petApi[apiName];
     if (!fn) return out;
@@ -8453,6 +8469,8 @@ async function readPresetText(apiName) {
     if (r && r.ok && r.text) out.text = r.text;
     // 文件存在（哪怕内容是空的）就算存在：空的 md 表示「用户就是要它为空」
     if (r && r.ok && r.exists) out.exists = true;
+    // 主进程说了这条内容属于角色目录：缺文件时按「该角色没写人设」处理
+    if (r && r.characterScoped) out.characterScoped = true;
   } catch (err) {
     console.warn('[shell] read', apiName, 'failed', err);
   }
@@ -8465,8 +8483,8 @@ async function loadPresetPersona() {
   if (r.exists) {
     // 文件存在就以文件为准（空文件 = 不注入人设，不再回填旧文案）
     personaMd = r.text;
-  } else {
-    // 首次迁移：旧版人设存在 localStorage，搬进 md 后以文件为准
+  } else if (!r.characterScoped) {
+    // 旧版全局人设存在 localStorage：只有「还没有任何角色」时才迁移到全局 md
     const saved = store.get('agentpet.presets', null);
     const old =
       saved && typeof saved === 'object'
@@ -8480,6 +8498,9 @@ async function loadPresetPersona() {
         console.warn('[shell] migrate persona failed', err);
       }
     }
+  } else {
+    // 该角色目录里还没有 persona.md：保持为空，不继承其他角色的人设
+    personaMd = '';
   }
   if (!presetPersonaDirty) {
     el.presetPersona.value = personaMd;

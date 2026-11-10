@@ -2586,13 +2586,37 @@ function registerIpc() {
       properties: ['openFile'],
     });
     if (!picked || !picked.length) return { ok: false, canceled: true };
+    // 大包解压可能几十秒：走共用任务中心，可看进度、可取消
+    const task = taskStart('正在导入角色包', { detail: path.basename(picked[0]), cancelable: true });
+    const controller = new AbortController();
+    task.abort = controller;
     let result;
     try {
-      result = await characterHost.importZip(picked[0]);
+      result = await characterHost.importZip(picked[0], {
+        signal: controller.signal,
+        onProgress: (p) => {
+          if (!p) return;
+          const patch = {};
+          if (p.detail) patch.detail = p.detail;
+          if (p.total) {
+            patch.total = p.total;
+            patch.received = p.received || 0;
+          }
+          taskUpdate(task.id, patch);
+        },
+      });
     } catch (err) {
-      return { ok: false, error: String(err && err.message ? err.message : err) };
+      result = { ok: false, error: String(err && err.message ? err.message : err) };
     }
-    if (!result.ok) return result;
+    if (result && result.canceled) {
+      taskFinish(task.id, { ok: false, detail: '已取消' });
+      return { ok: false, canceled: true };
+    }
+    if (!result || !result.ok) {
+      taskFinish(task.id, { ok: false, detail: (result && result.error) || '导入失败' });
+      return result || { ok: false, error: '导入失败' };
+    }
+    taskFinish(task.id, { ok: true, detail: `已导入 ${(result.character && result.character.name) || result.id}` });
     // 角色包通常不带图标：导入后请用户补一张（可取消，取消就显示首字）
     if (!result.icon) {
       const icon = dialog.showOpenDialogSync({
@@ -2749,7 +2773,35 @@ function registerIpc() {
     }
   });
 
-  const personaIO = presetTextIO(PRESET_PERSONA_FILE);
+  // 人设按角色走：<角色目录>/persona.md；没有角色时才回退到程序内的旧文件
+  function activePersonaFile() {
+    const active = APP_CONFIG.active;
+    if (active && active.dir) return path.join(active.dir, 'persona.md');
+    return PRESET_PERSONA_FILE;
+  }
+  const personaIO = {
+    read() {
+      const file = activePersonaFile();
+      // characterScoped：人设来自角色目录，缺失就代表「这个角色没写人设」，不允许用旧全局人设回填
+      const characterScoped = !!(APP_CONFIG.active && APP_CONFIG.active.dir);
+      try {
+        return { ok: true, text: fs.readFileSync(file, 'utf8'), path: file, exists: true, characterScoped };
+      } catch (err) {
+        if (err && err.code === 'ENOENT') return { ok: true, text: '', path: file, exists: false, characterScoped };
+        return { ok: false, error: String(err && err.message ? err.message : err), path: file, characterScoped };
+      }
+    },
+    write(text) {
+      const file = activePersonaFile();
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, String(text ?? ''), 'utf8');
+        return { ok: true, path: file };
+      } catch (err) {
+        return { ok: false, error: String(err && err.message ? err.message : err), path: file };
+      }
+    },
+  };
   const speakIO = presetTextIO(PRESET_SPEAK_FILE);
   const timeIO = presetTextIO(PRESET_TIME_FILE);
   const memoryIO = presetTextIO(PRESET_MEMORY_FILE);

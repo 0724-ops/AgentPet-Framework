@@ -128,21 +128,45 @@ function validateZipFile(file, limits = null) {
   return checkZipEntries(readZipEntriesFromFile(file), limits);
 }
 
-// 系统自带 tar（bsdtar 支持 zip）；失败时退回 PowerShell
-function extractZipTo(zipFile, destDir) {
+// 系统自带 tar（bsdtar 支持 zip）；失败时退回 PowerShell。
+// options.signal：用户取消时杀掉解压进程，返回 { ok:false, canceled:true }
+function extractZipTo(zipFile, destDir, { signal } = {}) {
   return new Promise((resolve) => {
     fs.mkdirSync(destDir, { recursive: true });
+    if (signal && signal.aborted) {
+      resolve({ ok: false, canceled: true });
+      return;
+    }
+    let child = null;
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve(result);
+    };
+    const onAbort = () => {
+      try {
+        if (child) child.kill();
+      } catch (_) {
+        /* 进程可能已经退出 */
+      }
+      finish({ ok: false, canceled: true });
+    };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
     const run = (cmd, args, onFail) => {
-      const child = spawn(cmd, args, { windowsHide: true });
+      if (settled) return;
+      child = spawn(cmd, args, { windowsHide: true });
       let err = '';
       child.stderr.on('data', (c) => {
         err += c.toString();
       });
       child.on('error', () => onFail && onFail());
       child.on('close', (code) => {
-        if (code === 0) resolve({ ok: true });
+        if (settled) return;
+        if (code === 0) finish({ ok: true });
         else if (onFail) onFail(err);
-        else resolve({ ok: false, error: `解压失败（${code}）：${err.trim().split(/\r?\n/).slice(-2).join(' ')}` });
+        else finish({ ok: false, error: `解压失败（${code}）：${err.trim().split(/\r?\n/).slice(-2).join(' ')}` });
       });
     };
     run('tar', ['-xf', zipFile, '-C', destDir], () =>
@@ -154,7 +178,7 @@ function extractZipTo(zipFile, destDir) {
           '-Command',
           `Expand-Archive -LiteralPath '${zipFile.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`,
         ],
-        (err) => resolve({ ok: false, error: `解压失败：${String(err || '').trim() || '系统里没有可用的解压工具'}` }),
+        (err) => finish({ ok: false, error: `解压失败：${String(err || '').trim() || '系统里没有可用的解压工具'}` }),
       ),
     );
   });
