@@ -6774,12 +6774,16 @@ function persistAppearance() {
 }
 
 // 当前窗口是不是毛玻璃材质：启动时由主进程决定
+// runtimeMaterial：这台机器是否支持系统材质（Win11 22H2+），不支持的平台退化为半透明模糊
 let runtimeGlass = false;
+let runtimeMaterial = true;
 if (!IS_PANEL && window.petApi && window.petApi.getAppearance) {
   window.petApi
     .getAppearance()
     .then((r) => {
       runtimeGlass = !!(r && r.glass);
+      runtimeMaterial = !(r && r.material === false);
+      applyBackground();
     })
     .catch(() => {});
 }
@@ -6787,15 +6791,13 @@ if (!IS_PANEL && window.petApi && window.petApi.getAppearance) {
 function applyBackground() {
   const mode = currentBgMode();
   settings.background = mode;
+  const glassMode = mode === 'glass';
   el.app.classList.toggle('frosted', mode === 'frosted');
-  el.app.classList.toggle('glass', mode === 'glass');
+  el.app.classList.toggle('glass', glassMode && runtimeMaterial);
+  el.app.classList.toggle('glass-fallback', glassMode && !runtimeMaterial);
   el.app.classList.toggle('bg-clear', mode === 'clear');
   // 毛玻璃浓度：叠在系统材质上的暗色层，保证文字对比
   el.app.style.setProperty('--glass-tint', String(glassOpacityValue()));
-  // 全透明时连窗口系统投影也关掉，否则贴边会看到一圈黑边
-  if (window.petApi && window.petApi.setWindowShadow) {
-    window.petApi.setWindowShadow(mode !== 'clear');
-  }
   // 换回别的背景时，托盘临时唤出的工具栏一并复位
   if (mode !== 'clear') el.app.classList.remove('toolbar-forced');
   if (bgGlassBox) {
@@ -6851,8 +6853,9 @@ if (bgPopBtn && bgPop) {
       persistAppearance();
       bgPop.hidden = true;
       bgPopBtn.classList.remove('active');
-      // 透明窗口和系统材质窗口只能二选一，跨过这条线就要提示重启
-      if ((mode === 'glass') !== wasGlass) {
+      // 透明窗口和系统材质窗口只能二选一，跨过这条线就要提示重启；
+      // 没有系统材质的平台（Win10）根本不会换窗口类型，切换即时生效
+      if (runtimeMaterial && (mode === 'glass') !== wasGlass) {
         if (!IS_PANEL && window.petApi && window.petApi.promptAppearanceRestart) {
           window.petApi.promptAppearanceRestart();
         } else {

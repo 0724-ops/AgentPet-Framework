@@ -363,6 +363,16 @@ const APPEARANCE_FILE = path.join(PROFILE_DIR, 'appearance.json');
 const BG_MODES = new Set(['dark', 'frosted', 'glass', 'clear']);
 const GLASS_MATERIALS = new Set(['acrylic', 'mica']);
 
+// 系统材质（亚克力 / 云母）只有 Windows 11 22H2（build 22621）及以上支持；
+// Win10 上 backgroundMaterial 会被忽略，窗口也不能是系统材质窗口，
+// 这时退回普通透明窗口，由渲染层画半透明模糊兜底。
+const MATERIAL_OK = (() => {
+  if (process.platform !== 'win32') return false;
+  // os.release() 在 Windows 上形如 10.0.22631，构建号是第三段
+  const build = Number(os.release().split('.')[2] || 0);
+  return build >= 22621;
+})();
+
 function normalizeAppearance(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const background = BG_MODES.has(src.background) ? src.background : 'dark';
@@ -389,7 +399,7 @@ function createWindow() {
   const workArea = screen.getPrimaryDisplay().workArea;
   const x = Math.round(workArea.x + (workArea.width - WINDOW_WIDTH) / 2);
   const y = Math.round(workArea.y + (workArea.height - WINDOW_HEIGHT) / 2);
-  const glass = appearance.background === 'glass';
+  const glass = appearance.background === 'glass' && MATERIAL_OK;
   windowGlass = glass;
 
   win = new BrowserWindow({
@@ -406,7 +416,10 @@ function createWindow() {
     ...(glass ? { backgroundMaterial: appearance.glassMaterial } : {}),
     icon: fs.existsSync(ICON_PATH) ? ICON_PATH : undefined,
     resizable: true,
-    hasShadow: true,
+    // 透明窗口是方形的，系统投影会沿着方形边界画在窗口内侧，
+    // 页面四角是圆角，透出来的方形投影看着就像"没裁掉的直角"，所以透明窗口不要投影。
+    // 毛玻璃是不透明窗口，圆角和投影都由系统按真实形状绘制，保留投影。
+    hasShadow: glass,
     alwaysOnTop: pinned,
     show: false,
     webPreferences: {
@@ -554,7 +567,8 @@ function createPanelWindow(kind) {
     backgroundColor: '#00000000',
     icon: fs.existsSync(ICON_PATH) ? ICON_PATH : undefined,
     resizable: true,
-    hasShadow: true,
+    // 同样是透明窗口，带投影会在四角露出方形边界
+    hasShadow: false,
     skipTaskbar: false,
     title: size.title,
     alwaysOnTop: pinned,
@@ -2580,19 +2594,8 @@ function registerIpc() {
     win.setBounds({ x, y, width, height });
     return true;
   });
-  // 全透明背景：关掉系统给窗口画的投影，否则透明区域外沿会露出一圈黑边
-  ipcMain.handle('pet:shadow:set', (_e, on) => {
-    if (!win || win.isDestroyed()) return false;
-    try {
-      if (typeof win.setHasShadow === 'function') win.setHasShadow(!!on);
-      log(`window shadow=${!!on}`);
-    } catch (err) {
-      log(`[shadow] 设置失败：${err && err.message}`);
-    }
-    return true;
-  });
   // 背景外观：渲染层把「背景模式 / 毛玻璃材质 / 浓度」同步过来，下次启动按它建窗
-  ipcMain.handle('pet:appearance:get', () => ({ glass: windowGlass }));
+  ipcMain.handle('pet:appearance:get', () => ({ glass: windowGlass, material: MATERIAL_OK }));
   ipcMain.handle('pet:appearance:set', (_e, payload) => {
     appearance = normalizeAppearance(payload);
     try {
