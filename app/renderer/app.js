@@ -6682,6 +6682,8 @@ $('#btn-settings').onclick = () => {
   const open = el.settingsPanel.classList.contains('show');
   closeAllPanels(open ? '' : 'settings');
   if (!open) {
+    // 设置页只按默认尺寸布局，窗口被压窄过就先恢复
+    if (!IS_PANEL && window.petApi && window.petApi.resetWindowSize) window.petApi.resetWindowSize();
     el.settingsPanel.classList.add('show');
     $('#btn-settings').classList.add('active');
   }
@@ -6833,6 +6835,8 @@ document.addEventListener('keydown', (e) => {
 // ------------------------------------------------------------------ 设置页
 function openSettingsPage(page) {
   closeAllPanels('settings');
+  // 设置页只按默认尺寸布局，窗口被压窄过就先恢复
+  if (!IS_PANEL && window.petApi && window.petApi.resetWindowSize) window.petApi.resetWindowSize();
   el.settingsPanel.classList.add('show');
   $('#btn-settings').classList.add('active');
   switchSettingsPage(page);

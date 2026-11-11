@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('petApi', {
   getClickThrough: () => ipcRenderer.invoke('pet:clickthrough:get'),
   setClickThrough: (enabled) => ipcRenderer.invoke('pet:clickthrough:set', enabled),
   toggleClickThrough: () => ipcRenderer.invoke('pet:clickthrough:toggle'),
+  // 打开设置时恢复默认窗口尺寸
+  resetWindowSize: () => ipcRenderer.invoke('pet:window:default-size'),
   // 全透明背景时关掉窗口系统投影
   setWindowShadow: (on) => ipcRenderer.invoke('pet:shadow:set', on),
   onClickThrough: (cb) => {

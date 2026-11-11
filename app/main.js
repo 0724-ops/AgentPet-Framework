@@ -365,7 +365,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
-    minWidth: 760,
+    minWidth: 440,
     minHeight: 520,
     x,
     y,
@@ -2535,6 +2535,19 @@ function registerIpc() {
   ipcMain.handle('pet:clickthrough:get', () => clickThrough);
   ipcMain.handle('pet:clickthrough:set', (_e, enabled) => setClickThrough(enabled));
   ipcMain.handle('pet:clickthrough:toggle', () => setClickThrough(!clickThrough));
+  // 打开设置时把窗口恢复成默认尺寸，设置页只按 900×600 布局，不再适配窄窗口
+  ipcMain.handle('pet:window:default-size', () => {
+    if (!win || win.isDestroyed()) return false;
+    const b = win.getBounds();
+    if (b.width >= WINDOW_WIDTH && b.height >= WINDOW_HEIGHT) return false;
+    const area = screen.getDisplayMatching(b).workArea;
+    const width = Math.min(WINDOW_WIDTH, area.width);
+    const height = Math.min(WINDOW_HEIGHT, area.height);
+    const x = Math.min(Math.max(b.x, area.x), area.x + area.width - width);
+    const y = Math.min(Math.max(b.y, area.y), area.y + area.height - height);
+    win.setBounds({ x, y, width, height });
+    return true;
+  });
   // 全透明背景：关掉系统给窗口画的投影，否则透明区域外沿会露出一圈黑边
   ipcMain.handle('pet:shadow:set', (_e, on) => {
     if (!win || win.isDestroyed()) return false;

@@ -261,7 +261,8 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 24px;
+  /* 窗口压窄时按钮间距跟着收，760px 处 24px，收到 330px 处 6px 为止，不再更小 */
+  column-gap: clamp(6px, calc(6px + (100vw - 330px) * 0.0419), 24px);
   z-index: 20;
   position: relative;
 }
