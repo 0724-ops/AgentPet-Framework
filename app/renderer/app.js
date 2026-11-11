@@ -40,6 +40,8 @@ const store = {
 const settings = store.get('agentpet.settings', {
   mouseFollow: true,
   releaseOnLeave: true,
+  // 禁用拖动旋转：开启后回到默认朝向，舞台区不再响应左键拖动
+  disableRotate: false,
   resolution: '2',
   background: 'dark',
   modelScale: 1,
@@ -7708,15 +7710,29 @@ if (promptTimeToggle) {
   };
 }
 
-$('#set-mouse-follow').checked = settings.mouseFollow !== false;
-$('#set-mouse-follow').onchange = (e) => {
-  settings.mouseFollow = e.target.checked;
-  if (!settings.mouseFollow && pet) {
+// 视线跟随：设置页开关与 Dock 浮层开关共用同一份状态
+const followSwitch = $('#set-mouse-follow');
+const dockFollowSwitch = $('#dock-mouse-follow');
+
+function syncFollowSwitches() {
+  const on = settings.mouseFollow !== false;
+  if (followSwitch) followSwitch.checked = on;
+  if (dockFollowSwitch) dockFollowSwitch.checked = on;
+}
+
+function setMouseFollow(on) {
+  settings.mouseFollow = on;
+  if (!on && pet) {
     if (pet.releaseLookAt) pet.releaseLookAt();
     else if (pet.clearLookAt) pet.clearLookAt();
   }
+  syncFollowSwitches();
   store.set('agentpet.settings', settings);
-};
+}
+
+syncFollowSwitches();
+if (followSwitch) followSwitch.onchange = (e) => setMouseFollow(e.target.checked);
+if (dockFollowSwitch) dockFollowSwitch.onchange = (e) => setMouseFollow(e.target.checked);
 
 $('#set-look-release').checked = settings.releaseOnLeave;
 $('#set-look-release').onchange = (e) => {
@@ -11651,6 +11667,7 @@ let modelDrag = null;
 el.stage.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   if (settings.visualOff === true) return; // 关闭画面时没有模型可转
+  if (settings.disableRotate === true) return; // 用户禁用了拖动旋转
   if (e.target.closest && e.target.closest('.panel, .dock, .top-bar')) return;
   modelDrag = { x: e.clientX };
   el.stage.classList.add('grabbing');
@@ -11704,6 +11721,29 @@ $('#btn-reset-view').onclick = () => {
   store.set('agentpet.settings', settings);
   toast('视图已复位', 'accent');
 };
+
+// Dock 浮层的「禁用旋转」：开启时回到默认朝向，并且舞台区不再响应拖动
+const noRotateSwitch = $('#dock-no-rotate');
+
+function syncNoRotateSwitch() {
+  const off = settings.disableRotate === true;
+  if (noRotateSwitch) noRotateSwitch.checked = off;
+  // 舞台提示跟着改，避免还写着「拖动旋转」
+  if (el.hint) el.hint.textContent = off ? '滚轮缩放' : '滚轮缩放 · 按住左键拖动旋转';
+}
+
+if (noRotateSwitch) {
+  noRotateSwitch.onchange = (e) => {
+    settings.disableRotate = e.target.checked;
+    if (settings.disableRotate) {
+      settings.modelRotation = 0; // 恢复默认角度
+      applyModelTransform();
+    }
+    syncNoRotateSwitch();
+    store.set('agentpet.settings', settings);
+  };
+}
+syncNoRotateSwitch();
 
 // ------------------------------------------------------------------ 窗口按钮
 // 主界面左上角 #btn-pin 和设置底栏最右 #taskbar-pin 是同一个开关，状态互相同步
