@@ -1782,7 +1782,8 @@ html[data-visual-off] .stage {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 36px;
+  /* 右边留窄一点：控制台入口不再贴角填满，和置顶按钮并排 */
+  padding: 0 10px 0 36px;
   position: relative;
   border-top: 1px solid var(--panel-border);
   background: rgba(0, 0, 0, 0.28);
@@ -1860,8 +1861,8 @@ html[data-visual-off] .stage {
   width: 20px;
   height: 20px;
   margin-left: 2px;
-  /* 给右下角的控制台按钮让出位置 */
-  margin-right: 14px;
+  /* 和控制台图标再靠近一点：flex 的 10px 间距减掉 4px */
+  margin-right: -4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1876,6 +1877,7 @@ html[data-visual-off] .stage {
 
 .taskbar-pin:hover {
   color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .taskbar-pin.active {
@@ -1894,35 +1896,35 @@ html[data-visual-off] .stage {
   stroke-width: 2;
 }
 
-/* 底栏最右下角：贴边填满的控制台入口 */
+/* 底栏最右：控制台入口。平时只有图标，悬停才出现灰色圆角块（VSCode 风格） */
 .taskbar-console {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 34px;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 0 0 16px 0;
-  background: linear-gradient(180deg, #43b894, #2f9c7b);
-  color: #ffffff;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
   transition: 0.2s;
 }
 
 .taskbar-console:hover {
-  filter: brightness(1.12);
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .taskbar-console:active {
-  filter: brightness(0.94);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .taskbar-console svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
