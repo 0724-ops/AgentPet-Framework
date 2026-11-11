@@ -357,10 +357,40 @@ function registerAppProtocol() {
 }
 
 // ------------------------------------------------------------------ window
+// 背景外观：毛玻璃要用系统窗口材质（acrylic / mica），必须创建成不透明窗口；
+// 而全透明桌宠模式又必须是 transparent 窗口。两者互斥，只能启动时定，切换后重启生效。
+const APPEARANCE_FILE = path.join(PROFILE_DIR, 'appearance.json');
+const BG_MODES = new Set(['dark', 'frosted', 'glass', 'clear']);
+const GLASS_MATERIALS = new Set(['acrylic', 'mica']);
+
+function normalizeAppearance(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const background = BG_MODES.has(src.background) ? src.background : 'dark';
+  const glassMaterial = GLASS_MATERIALS.has(src.glassMaterial) ? src.glassMaterial : 'acrylic';
+  let glassOpacity = Number(src.glassOpacity);
+  if (!Number.isFinite(glassOpacity)) glassOpacity = 0.45;
+  glassOpacity = Math.min(0.85, Math.max(0.1, glassOpacity));
+  return { background, glassMaterial, glassOpacity };
+}
+
+function readAppearance() {
+  try {
+    return normalizeAppearance(JSON.parse(fs.readFileSync(APPEARANCE_FILE, 'utf8')));
+  } catch (_) {
+    return normalizeAppearance(null);
+  }
+}
+
+let appearance = readAppearance();
+// 当前窗口是不是毛玻璃材质：渲染层据此判断切换背景要不要提示重启
+let windowGlass = false;
+
 function createWindow() {
   const workArea = screen.getPrimaryDisplay().workArea;
   const x = Math.round(workArea.x + (workArea.width - WINDOW_WIDTH) / 2);
   const y = Math.round(workArea.y + (workArea.height - WINDOW_HEIGHT) / 2);
+  const glass = appearance.background === 'glass';
+  windowGlass = glass;
 
   win = new BrowserWindow({
     width: WINDOW_WIDTH,
@@ -370,8 +400,10 @@ function createWindow() {
     x,
     y,
     frame: false,
-    transparent: true,
+    // 毛玻璃必须不透明窗口 + 系统材质；其余模式保持透明，全透明才能镂空
+    transparent: !glass,
     backgroundColor: '#00000000',
+    ...(glass ? { backgroundMaterial: appearance.glassMaterial } : {}),
     icon: fs.existsSync(ICON_PATH) ? ICON_PATH : undefined,
     resizable: true,
     hasShadow: true,
@@ -2556,6 +2588,45 @@ function registerIpc() {
       log(`window shadow=${!!on}`);
     } catch (err) {
       log(`[shadow] 设置失败：${err && err.message}`);
+    }
+    return true;
+  });
+  // 背景外观：渲染层把「背景模式 / 毛玻璃材质 / 浓度」同步过来，下次启动按它建窗
+  ipcMain.handle('pet:appearance:get', () => ({ glass: windowGlass }));
+  ipcMain.handle('pet:appearance:set', (_e, payload) => {
+    appearance = normalizeAppearance(payload);
+    try {
+      fs.writeFileSync(APPEARANCE_FILE, JSON.stringify(appearance, null, 2));
+    } catch (err) {
+      log(`[appearance] 写入失败：${err && err.message}`);
+    }
+    // 已经是毛玻璃窗口时，材质可以即时切换，不用重启
+    if (windowGlass && win && !win.isDestroyed()) {
+      try {
+        win.setBackgroundMaterial(appearance.glassMaterial);
+      } catch (err) {
+        log(`[appearance] 切换材质失败：${err && err.message}`);
+      }
+    }
+    return appearance;
+  });
+  // 透明窗口与系统材质窗口互斥，切换后只能靠重启生效
+  ipcMain.handle('pet:appearance:restart-prompt', async () => {
+    if (!win || win.isDestroyed()) return false;
+    const r = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: '背景切换',
+      message: '背景切换需要重建窗口',
+      detail: '毛玻璃使用的是系统窗口材质，与全透明桌宠窗口互斥，将在下次启动时生效。',
+      buttons: ['稍后', '立即重启'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (r && r.response === 1) {
+      quitting = true;
+      app.relaunch();
+      app.exit(0);
     }
     return true;
   });

@@ -64,7 +64,19 @@
           <div class="dock-pop-head"><span>背景</span></div>
           <button class="dock-pop-opt" type="button" data-bg="dark">深色</button>
           <button class="dock-pop-opt" type="button" data-bg="frosted">半透明面板</button>
+          <button class="dock-pop-opt" type="button" data-bg="glass">毛玻璃</button>
           <button class="dock-pop-opt" type="button" data-bg="clear">全透明（只看桌宠）</button>
+          <div class="dock-pop-glass" id="bg-glass-opts" hidden>
+            <label class="dock-pop-row">
+              <span>材质</span>
+              <select id="bg-glass-material">
+                <option value="acrylic">亚克力（模糊）</option>
+                <option value="mica">云母（壁纸）</option>
+              </select>
+            </label>
+            <div class="dock-pop-head dock-pop-head--tight"><span>浓度</span><b id="bg-glass-v">45%</b></div>
+            <input type="range" id="bg-glass-opacity" min="10" max="85" step="1" value="45" />
+          </div>
         </div>
         <button class="dock-btn" id="btn-pivot" title="缩放中心">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1.7"/><polyline points="8.5 3 3 3 3 8.5"/><polyline points="15.5 3 21 3 21 8.5"/><polyline points="3 15.5 3 21 8.5 21"/><polyline points="21 15.5 21 21 15.5 21"/></svg>

@@ -44,6 +44,9 @@ const settings = store.get('agentpet.settings', {
   disableRotate: false,
   resolution: '2',
   background: 'dark',
+  // 毛玻璃：系统材质（acrylic / mica）与页面暗色浓度，仅毛玻璃模式生效
+  glassMaterial: 'acrylic',
+  glassOpacity: 0.45,
   modelScale: 1,
   modelRotation: 0,
   scalePivot: 0,
@@ -6737,26 +6740,73 @@ if (pivotDockInput) {
   pivotDockInput.onchange = () => store.set('agentpet.settings', settings);
 }
 
-// 背景切换：Dock 最左边的按钮弹出小浮层，深色 / 半透明面板 / 全透明（只看桌宠）
+// 背景切换：Dock 最左边的按钮弹出小浮层，深色 / 半透明面板 / 毛玻璃 / 全透明（只看桌宠）
 const bgPop = $('#bg-pop');
 const bgPopBtn = $('#btn-bg');
-const BG_TOAST = { dark: '背景：深色', frosted: '背景：半透明面板', clear: '背景：全透明（只看桌宠）' };
+const bgGlassBox = $('#bg-glass-opts');
+const bgGlassMat = $('#bg-glass-material');
+const bgGlassOpacity = $('#bg-glass-opacity');
+const bgGlassOpacityV = $('#bg-glass-v');
+const BG_MODES = ['frosted', 'glass', 'clear'];
+const BG_TOAST = { dark: '背景：深色', frosted: '背景：半透明面板', glass: '背景：毛玻璃', clear: '背景：全透明（只看桌宠）' };
 
 function currentBgMode() {
-  return settings.background === 'frosted' || settings.background === 'clear' ? settings.background : 'dark';
+  return BG_MODES.includes(settings.background) ? settings.background : 'dark';
+}
+
+function glassMaterialValue() {
+  return settings.glassMaterial === 'mica' ? 'mica' : 'acrylic';
+}
+
+function glassOpacityValue() {
+  const n = Number(settings.glassOpacity);
+  return Number.isFinite(n) ? Math.min(0.85, Math.max(0.1, n)) : 0.45;
+}
+
+// 主进程按这份配置建窗：毛玻璃（不透明 + 系统材质）与全透明桌宠窗口互斥，改动后重启才真正换窗口
+function persistAppearance() {
+  if (IS_PANEL || !window.petApi || !window.petApi.setAppearance) return;
+  window.petApi.setAppearance({
+    background: currentBgMode(),
+    glassMaterial: glassMaterialValue(),
+    glassOpacity: glassOpacityValue(),
+  });
+}
+
+// 当前窗口是不是毛玻璃材质：启动时由主进程决定
+let runtimeGlass = false;
+if (!IS_PANEL && window.petApi && window.petApi.getAppearance) {
+  window.petApi
+    .getAppearance()
+    .then((r) => {
+      runtimeGlass = !!(r && r.glass);
+    })
+    .catch(() => {});
 }
 
 function applyBackground() {
   const mode = currentBgMode();
   settings.background = mode;
   el.app.classList.toggle('frosted', mode === 'frosted');
+  el.app.classList.toggle('glass', mode === 'glass');
   el.app.classList.toggle('bg-clear', mode === 'clear');
+  // 毛玻璃浓度：叠在系统材质上的暗色层，保证文字对比
+  el.app.style.setProperty('--glass-tint', String(glassOpacityValue()));
   // 全透明时连窗口系统投影也关掉，否则贴边会看到一圈黑边
   if (window.petApi && window.petApi.setWindowShadow) {
     window.petApi.setWindowShadow(mode !== 'clear');
   }
   // 换回别的背景时，托盘临时唤出的工具栏一并复位
   if (mode !== 'clear') el.app.classList.remove('toolbar-forced');
+  if (bgGlassBox) {
+    bgGlassBox.hidden = mode !== 'glass';
+    if (mode === 'glass') {
+      const pct = Math.round(glassOpacityValue() * 100);
+      if (bgGlassMat) bgGlassMat.value = glassMaterialValue();
+      if (bgGlassOpacity) bgGlassOpacity.value = String(pct);
+      if (bgGlassOpacityV) bgGlassOpacityV.textContent = `${pct}%`;
+    }
+  }
   if (bgPop) {
     bgPop.querySelectorAll('.dock-pop-opt').forEach((opt) => {
       opt.classList.toggle('active', opt.dataset.bg === mode);
@@ -6793,14 +6843,46 @@ if (bgPopBtn && bgPop) {
   });
   bgPop.querySelectorAll('.dock-pop-opt').forEach((opt) => {
     opt.onclick = () => {
-      settings.background = opt.dataset.bg;
+      const mode = opt.dataset.bg;
+      const wasGlass = runtimeGlass;
+      settings.background = mode;
       store.set('agentpet.settings', settings);
       applyBackground();
-      toast(BG_TOAST[settings.background] || '背景已切换');
+      persistAppearance();
       bgPop.hidden = true;
       bgPopBtn.classList.remove('active');
+      // 透明窗口和系统材质窗口只能二选一，跨过这条线就要提示重启
+      if ((mode === 'glass') !== wasGlass) {
+        if (!IS_PANEL && window.petApi && window.petApi.promptAppearanceRestart) {
+          window.petApi.promptAppearanceRestart();
+        } else {
+          toast('毛玻璃背景将在下次启动生效');
+        }
+        return;
+      }
+      toast(BG_TOAST[mode] || '背景已切换');
     };
   });
+}
+
+// 毛玻璃参数：材质在毛玻璃窗口下由主进程即时切换；浓度只改页面叠色，立即生效
+if (bgGlassMat) {
+  bgGlassMat.onchange = () => {
+    settings.glassMaterial = bgGlassMat.value === 'mica' ? 'mica' : 'acrylic';
+    store.set('agentpet.settings', settings);
+    persistAppearance();
+  };
+}
+if (bgGlassOpacity) {
+  bgGlassOpacity.oninput = () => {
+    settings.glassOpacity = Math.min(0.85, Math.max(0.1, Number(bgGlassOpacity.value) / 100));
+    el.app.style.setProperty('--glass-tint', String(glassOpacityValue()));
+    if (bgGlassOpacityV) bgGlassOpacityV.textContent = `${bgGlassOpacity.value}%`;
+  };
+  bgGlassOpacity.onchange = () => {
+    store.set('agentpet.settings', settings);
+    persistAppearance();
+  };
 }
 
 // 托盘菜单「显示 / 隐藏工具栏」：全透明模式下把底栏临时唤回来
@@ -12023,6 +12105,8 @@ async function bootstrap() {
   }
 
   applyBackground();
+  // 把当前外观同步给主进程，保证下次启动用的窗口类型与设置一致
+  persistAppearance();
   syncRenderBackendUi(); // 配置读完后才知道当前是内置还是导入内核
   if (settings.visualOff === true) {
     // 关闭画面：不挂内核（布局不变，只在舞台中间显示「已停止渲染」）

@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('petApi', {
   resetWindowSize: () => ipcRenderer.invoke('pet:window:default-size'),
   // 全透明背景时关掉窗口系统投影
   setWindowShadow: (on) => ipcRenderer.invoke('pet:shadow:set', on),
+  // 背景外观（毛玻璃材质 / 浓度）：写入主进程，下次启动按它建窗
+  getAppearance: () => ipcRenderer.invoke('pet:appearance:get'),
+  setAppearance: (payload) => ipcRenderer.invoke('pet:appearance:set', payload),
+  promptAppearanceRestart: () => ipcRenderer.invoke('pet:appearance:restart-prompt'),
   onClickThrough: (cb) => {
     if (typeof cb !== 'function') return () => {};
     const listener = (_event, enabled) => cb(enabled);
