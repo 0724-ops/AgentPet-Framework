@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('petApi', {
   getClickThrough: () => ipcRenderer.invoke('pet:clickthrough:get'),
   setClickThrough: (enabled) => ipcRenderer.invoke('pet:clickthrough:set', enabled),
   toggleClickThrough: () => ipcRenderer.invoke('pet:clickthrough:toggle'),
+  // 全透明背景时关掉窗口系统投影
+  setWindowShadow: (on) => ipcRenderer.invoke('pet:shadow:set', on),
   onClickThrough: (cb) => {
     if (typeof cb !== 'function') return () => {};
     const listener = (_event, enabled) => cb(enabled);
@@ -43,6 +45,14 @@ contextBridge.exposeInMainWorld('petApi', {
     const listener = () => cb();
     ipcRenderer.on('ui:open-settings', listener);
     return () => ipcRenderer.removeListener('ui:open-settings', listener);
+  },
+
+  // 托盘菜单「显示 / 隐藏工具栏」：全透明背景下临时唤回顶栏和底栏
+  onToggleToolbar: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = () => cb();
+    ipcRenderer.on('ui:toggle-toolbar', listener);
+    return () => ipcRenderer.removeListener('ui:toggle-toolbar', listener);
   },
 
   // 独立面板窗口（添加动作）

@@ -6735,12 +6735,78 @@ if (pivotDockInput) {
   pivotDockInput.onchange = () => store.set('agentpet.settings', settings);
 }
 
-$('#btn-bg').onclick = () => {
-  settings.background = settings.background === 'frosted' ? 'dark' : 'frosted';
-  store.set('agentpet.settings', settings);
-  el.app.classList.toggle('frosted', settings.background === 'frosted');
-  toast(settings.background === 'frosted' ? '背景：半透明毛玻璃' : '背景：深色');
-};
+// 背景切换：Dock 最左边的按钮弹出小浮层，深色 / 半透明面板 / 全透明（只看桌宠）
+const bgPop = $('#bg-pop');
+const bgPopBtn = $('#btn-bg');
+const BG_TOAST = { dark: '背景：深色', frosted: '背景：半透明面板', clear: '背景：全透明（只看桌宠）' };
+
+function currentBgMode() {
+  return settings.background === 'frosted' || settings.background === 'clear' ? settings.background : 'dark';
+}
+
+function applyBackground() {
+  const mode = currentBgMode();
+  settings.background = mode;
+  el.app.classList.toggle('frosted', mode === 'frosted');
+  el.app.classList.toggle('bg-clear', mode === 'clear');
+  // 全透明时连窗口系统投影也关掉，否则贴边会看到一圈黑边
+  if (window.petApi && window.petApi.setWindowShadow) {
+    window.petApi.setWindowShadow(mode !== 'clear');
+  }
+  // 换回别的背景时，托盘临时唤出的工具栏一并复位
+  if (mode !== 'clear') el.app.classList.remove('toolbar-forced');
+  if (bgPop) {
+    bgPop.querySelectorAll('.dock-pop-opt').forEach((opt) => {
+      opt.classList.toggle('active', opt.dataset.bg === mode);
+    });
+  }
+}
+
+if (bgPopBtn && bgPop) {
+  bgPopBtn.onclick = (e) => {
+    e.stopPropagation();
+    const open = bgPop.hidden;
+    bgPop.hidden = !open;
+    bgPopBtn.classList.toggle('active', open);
+    if (open) {
+      // 两个浮层互斥，避免叠在一起
+      if (pivotPop) {
+        pivotPop.hidden = true;
+        if (pivotPopBtn) pivotPopBtn.classList.remove('active');
+      }
+      const btnBox = bgPopBtn.getBoundingClientRect();
+      const dockBox = bgPop.parentElement.getBoundingClientRect();
+      const half = 116;
+      const x = btnBox.left - dockBox.left + btnBox.width / 2;
+      bgPop.style.left = `${Math.round(clamp(x, half + 8, dockBox.width - half - 8))}px`;
+      applyBackground();
+    }
+  };
+  // 点浮层外面就收起
+  document.addEventListener('pointerdown', (e) => {
+    if (bgPop.hidden) return;
+    if (bgPop.contains(e.target) || bgPopBtn.contains(e.target)) return;
+    bgPop.hidden = true;
+    bgPopBtn.classList.remove('active');
+  });
+  bgPop.querySelectorAll('.dock-pop-opt').forEach((opt) => {
+    opt.onclick = () => {
+      settings.background = opt.dataset.bg;
+      store.set('agentpet.settings', settings);
+      applyBackground();
+      toast(BG_TOAST[settings.background] || '背景已切换');
+      bgPop.hidden = true;
+      bgPopBtn.classList.remove('active');
+    };
+  });
+}
+
+// 托盘菜单「显示 / 隐藏工具栏」：全透明模式下把底栏临时唤回来
+if (window.petApi && window.petApi.onToggleToolbar) {
+  window.petApi.onToggleToolbar(() => {
+    el.app.classList.toggle('toolbar-forced');
+  });
+}
 
 // 主界面喇叭 = 自动朗读开关（和设置里的「自动朗读」同一份状态）
 function syncAutoReadUi() {
@@ -11952,7 +12018,7 @@ async function bootstrap() {
     return;
   }
 
-  el.app.classList.toggle('frosted', settings.background === 'frosted');
+  applyBackground();
   syncRenderBackendUi(); // 配置读完后才知道当前是内置还是导入内核
   if (settings.visualOff === true) {
     // 关闭画面：不挂内核（布局不变，只在舞台中间显示「已停止渲染」）

@@ -594,6 +594,7 @@ function createTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '显示 / 隐藏', click: () => (win && win.isVisible() ? win.hide() : showWindow()) },
+      { label: '显示 / 隐藏工具栏', click: () => { showWindow(); sendUiCommand('ui:toggle-toolbar'); } },
       { label: '设置', click: () => { showWindow(); sendUiCommand('ui:open-settings'); } },
       { label: '退出', click: () => { quitting = true; app.quit(); } },
     ])
@@ -2534,6 +2535,17 @@ function registerIpc() {
   ipcMain.handle('pet:clickthrough:get', () => clickThrough);
   ipcMain.handle('pet:clickthrough:set', (_e, enabled) => setClickThrough(enabled));
   ipcMain.handle('pet:clickthrough:toggle', () => setClickThrough(!clickThrough));
+  // 全透明背景：关掉系统给窗口画的投影，否则透明区域外沿会露出一圈黑边
+  ipcMain.handle('pet:shadow:set', (_e, on) => {
+    if (!win || win.isDestroyed()) return false;
+    try {
+      if (typeof win.setHasShadow === 'function') win.setHasShadow(!!on);
+      log(`window shadow=${!!on}`);
+    } catch (err) {
+      log(`[shadow] 设置失败：${err && err.message}`);
+    }
+    return true;
+  });
   ipcMain.handle('pet:capture', async (_e, pngPath) => {
     try {
       return await captureTo(pngPath);
