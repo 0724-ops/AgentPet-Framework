@@ -159,7 +159,7 @@ function loadAppConfig() {
 
 // 切换角色后整份配置会重算，所以这里必须是 let
 let APP_CONFIG = loadAppConfig();
-// 语音输入：本地 whisper.cpp（引擎 + 模型都在 si/voice/asr/，缺失时按需下载或导入 zip）
+// 语音输入：本地 sherpa-onnx（引擎 + SenseVoice 模型都在 si/voice/asr/，缺失时按需下载或导入组件包）
 const VOICE_DIR = path.join(SI_ROOT, APP_CONFIG.asr.dir);
 const VOICE_MODEL_DIR = path.join(SI_ROOT, APP_CONFIG.asr.modelsDir);
 // 长程记忆：embedding 模型按需下载（si/models/bge-small-zh-v1.5/，不进仓库）；库放 userData
@@ -182,7 +182,7 @@ const PRESET_MEMORY_FILE = path.join(APP_DIR, 'preset-memory.md');
 const PRESET_COMPRESS_FILE = path.join(APP_DIR, 'preset-compress.md');
 // 可插拔工具注册表：只登记真 Tool Call；SPEAK / MEM_MARK 属于底层协议，不走这里
 const TOOLS_CONFIG_FILE = path.join(APP_DIR, 'tools.config.json');
-// 繁 → 简回落表（OpenCC t2s 单字 + 词组例外），用于修正 whisper 的中文输出
+// 繁 → 简回落表（OpenCC t2s 单字 + 词组例外），用于兜底修正转写结果
 const T2S_FILE = path.join(APP_DIR, 't2s.json');
 const WINDOW_WIDTH = 900;
 const WINDOW_HEIGHT = 600;
@@ -1036,14 +1036,11 @@ const MEMORY_COMMANDS = new Set([
   'settle',
 ]);
 
-// ------------------------------------------------------------------ 语音输入（whisper.cpp）
-// 渲染层录 16k 单声道 WAV 传进来，这里落临时文件、spawn whisper-cli 转写，再把纯文本回传。
-const VOICE_BIN_CANDIDATES = [
-  'whisper-cli.exe',
-  path.join('bin', 'Release', 'whisper-cli.exe'),
-  path.join('bin', 'whisper-cli.exe'),
-  'main.exe',
-];
+// ------------------------------------------------------------------ 语音输入（sherpa-onnx）
+// 渲染层录 16k 单声道 WAV 传进来，这里落临时文件、spawn sherpa-onnx-vad-with-offline-asr 转写，
+// 再把纯文本回传。用 VAD + 非流式模型那一支：长录音会被 Silero VAD 自动切段，不用整段一次喂。
+const VOICE_BIN_NAME = 'sherpa-onnx-vad-with-offline-asr.exe';
+const VOICE_BIN_CANDIDATES = [VOICE_BIN_NAME, path.join('bin', VOICE_BIN_NAME)];
 
 function firstExistingFile(files) {
   for (const file of files) {
@@ -1056,59 +1053,69 @@ function firstExistingFile(files) {
   return '';
 }
 
+// 模型清单来自 components.json；切换角色不影响这份配置，但每次现读，方便用户手改后重新检测
+function asrModelSpec() {
+  const model = APP_CONFIG.asr.model || {};
+  return Array.isArray(model.files) ? model.files.filter((f) => f && f.path) : [];
+}
+
+function asrModelPath(name) {
+  return path.join(VOICE_MODEL_DIR, name);
+}
+
 function findVoiceBin() {
   const candidates = VOICE_BIN_CANDIDATES.map((rel) => path.join(VOICE_DIR, rel));
-  // 用户可能直接把 zip 里的文件平铺进来，兜底扫一层目录
-  try {
-    for (const name of fs.readdirSync(VOICE_DIR)) {
-      if (name.toLowerCase().endsWith('.exe')) candidates.push(path.join(VOICE_DIR, name));
-    }
-  } catch (_) {
-    /* 目录不存在时走下面的失败分支 */
-  }
+  // 解压后可能带版本号目录（bin/ 在更深一层），兜底按文件名递归找
+  candidates.push(...findFilesDeep(VOICE_DIR, /^sherpa-onnx-vad-with-offline-asr\.exe$/i));
   return firstExistingFile(candidates);
 }
 
 function findVoiceModel() {
-  let names = [];
+  const main = asrModelSpec().find((f) => /^model(\.int8)?\.onnx$/i.test(f.path));
+  if (!main) return '';
+  const file = asrModelPath(main.path);
   try {
-    names = fs.readdirSync(VOICE_MODEL_DIR).filter((n) => n.toLowerCase().endsWith('.bin'));
+    return fs.statSync(file).isFile() ? file : '';
   } catch (_) {
     return '';
   }
-  // 优先轻量模型：tiny/base 响应快，适合边听边转写；大模型只作为兜底
-  const preferred = ['ggml-tiny', 'ggml-base', 'ggml-small', 'ggml-medium', 'ggml-large'];
-  for (const key of preferred) {
-    const hit = names.find((n) => n.toLowerCase().startsWith(key));
-    if (hit) return path.join(VOICE_MODEL_DIR, hit);
-  }
-  return names.length ? path.join(VOICE_MODEL_DIR, names.sort()[0]) : '';
 }
 
 function listVoiceModels() {
+  const model = findVoiceModel();
+  if (!model) return [];
+  let size = 0;
   try {
-    return fs
-      .readdirSync(VOICE_MODEL_DIR)
-      .filter((n) => n.toLowerCase().endsWith('.bin'))
-      .sort()
-      .map((name) => {
-        let size = 0;
-        try {
-          size = fs.statSync(path.join(VOICE_MODEL_DIR, name)).size;
-        } catch (_) {
-          /* 拿不到大小就不显示 */
-        }
-        return { name, size };
-      });
+    size = fs.statSync(model).size;
   } catch (_) {
-    return [];
+    /* 拿不到大小就不显示 */
   }
+  return [{ name: 'SenseVoiceSmall int8', size, file: path.basename(model) }];
+}
+
+function asrMissingFiles() {
+  return asrModelSpec().filter((f) => {
+    try {
+      return !fs.statSync(asrModelPath(f.path)).isFile();
+    } catch (_) {
+      return true;
+    }
+  });
 }
 
 function voiceStatus() {
   const bin = findVoiceBin();
   const model = findVoiceModel();
-  return { ok: !!bin && !!model, bin, model, models: listVoiceModels(), dir: VOICE_DIR, modelDir: VOICE_MODEL_DIR };
+  const missing = asrMissingFiles().map((f) => f.path);
+  return {
+    ok: !!bin && !missing.length,
+    bin,
+    model,
+    models: listVoiceModels(),
+    missing,
+    dir: VOICE_DIR,
+    modelDir: VOICE_MODEL_DIR,
+  };
 }
 
 // ------------------------------------------------------------------ 下载 / 解压（语音组件按需安装）
@@ -1199,7 +1206,7 @@ function copyDirMerge(src, dest) {
   }
 }
 
-// 解压出来的东西常常多包一层文件夹（whisper-bin-x64/、si_tts/…），这里把唯一的一层壳剥掉
+// 解压出来的东西常常多包一层文件夹（sherpa-onnx-vX-win-x64/、si_tts/…），这里把唯一的一层壳剥掉
 function unwrapSingleRoot(dir) {
   let entries = [];
   try {
@@ -1227,124 +1234,127 @@ function findFilesDeep(dir, re, out = []) {
   return out;
 }
 
-async function resolveGithubAsset(repo, assetName, signal) {
-  const headers = { 'User-Agent': 'si-desktop', Accept: 'application/vnd.github+json' };
-  const pick = (rel) => (rel && rel.assets ? rel.assets : []).find((a) => a.name === assetName);
-  const toResult = (rel, asset) => ({
-    url: asset.browser_download_url,
-    size: Number(asset.size) || 0,
-    tag: (rel && rel.tag_name) || '',
-  });
-
-  // 先看 latest。whisper.cpp 这类仓库的 latest 发布有时只贴源码、不带二进制，
-  // 找不到就往回翻最近的正式 release，避免「最新 release 里没有 xx」直接失败。
-  try {
-    const res = await net.fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers, signal });
-    if (res.ok) {
-      const data = await res.json();
-      const asset = pick(data);
-      if (asset) return toResult(data, asset);
-    }
-  } catch (err) {
-    if (signal && signal.aborted) throw err;
-    // latest 请求失败也继续走下面的列表兜底
+// 下载源按顺序尝试：先直连，再走镜像前缀（gh-proxy 这类）
+function expandSources(sources, url, proxies) {
+  const list = (Array.isArray(sources) ? sources : []).filter(Boolean).map(String);
+  if (url) list.push(String(url));
+  for (const raw of Array.isArray(proxies) ? proxies : []) {
+    const prefix = String(raw || '').trim();
+    if (!prefix || !url) continue;
+    list.push(`${prefix.replace(/\/+$/, '')}/${url}`);
   }
-
-  const listRes = await net.fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, {
-    headers,
-    signal,
-  });
-  if (!listRes.ok) throw new Error(`GitHub 接口失败（HTTP ${listRes.status}）`);
-  const list = await listRes.json();
-  for (const rel of Array.isArray(list) ? list : []) {
-    const asset = pick(rel);
-    if (asset) return toResult(rel, asset);
-  }
-  throw new Error(`最近 20 个 release 里都没有 ${assetName}（仓库 ${repo}）`);
+  return list;
 }
 
-// 语音识别：引擎（whisper.cpp 官方 release）和模型（HuggingFace 官方 ggml）都走下载，
-// 也可以直接导入 zip；两者都缺时按顺序补齐，已有的跳过。
+async function downloadFirstOk(sources, dest, { signal, onProgress } = {}) {
+  let lastErr = null;
+  for (const url of sources) {
+    if (signal && signal.aborted) throw new Error('已取消');
+    try {
+      return await fetchToFile(url, dest, { signal, onProgress });
+    } catch (err) {
+      if (signal && signal.aborted) throw err;
+      lastErr = err;
+      try {
+        fs.unlinkSync(dest);
+      } catch (_) {
+        /* 半截文件可能没创建 */
+      }
+    }
+  }
+  throw lastErr || new Error('没有可用的下载源');
+}
+
+// 语音识别：引擎（sherpa-onnx 官方 release）和模型（SenseVoice int8 + Silero VAD）都走下载，
+// 也可以直接导入组件包；两者都缺时按顺序补齐，已有的跳过。
 async function installAsr({ force = false } = {}) {
   const engine = APP_CONFIG.asr.engine || {};
-  const model = APP_CONFIG.asr.model || {};
   const status0 = voiceStatus();
   const needBin = force || !status0.bin;
-  const needModel = force || !status0.model;
-  if (!needBin && !needModel) return { ok: true, status: status0 };
+  const missing = force ? asrModelSpec() : asrMissingFiles();
+  if (!needBin && !missing.length) return { ok: true, status: status0 };
 
   // 引擎
   if (needBin) {
-    const task = taskStart('正在下载 语音识别引擎', { detail: engine.asset || '', cancelable: true });
+    const engineName = engine.file || path.basename(String(engine.url || '')) || 'sherpa-onnx';
+    const task = taskStart('正在下载 语音识别引擎', { detail: engineName, cancelable: true });
     const controller = new AbortController();
     task.abort = controller;
-    const tmpZip = path.join(os.tmpdir(), `si-asr-engine-${Date.now()}.zip`);
+    const tmpFile = path.join(os.tmpdir(), `si-asr-engine-${Date.now()}-${engineName}`);
+    const tmpDir = path.join(os.tmpdir(), `si-asr-engine-dir-${Date.now()}`);
     try {
-      let url = '';
-      let size = 0;
-      if (engine.type === 'github-release' && engine.repo) {
-        const asset = await resolveGithubAsset(engine.repo, engine.asset || 'whisper-bin-x64.zip', controller.signal);
-        url = asset.url;
-        size = asset.size;
-        // 详情里带上 release tag，让用户一眼看出二进制是从哪个 release 拿的
-        taskUpdate(task.id, { detail: asset.tag ? `${asset.tag} · ${engine.asset || 'whisper-bin-x64.zip'}` : engine.asset || '' });
-      } else if (engine.url) {
-        url = engine.url;
-      }
-      if (!url) throw new Error('components.json 里没有配置语音识别引擎的下载源');
-      taskUpdate(task.id, { total: size });
-      await fetchToFile(url, tmpZip, {
+      const sources = expandSources([], engine.url, engine.proxies);
+      if (!sources.length) throw new Error('components.json 里没有配置语音识别引擎的下载源');
+      taskUpdate(task.id, { total: Number(engine.bytes) || 0 });
+      await downloadFirstOk(sources, tmpFile, {
         signal: controller.signal,
-        onProgress: (received, total) => taskUpdate(task.id, { received, total: total || size }),
+        onProgress: (received, total) =>
+          taskUpdate(task.id, { received, total: total || Number(engine.bytes) || 0 }),
       });
       taskUpdate(task.id, { detail: '正在解压引擎', percent: null });
-      const un = await extractZip(tmpZip, VOICE_DIR);
+      // 系统 tar（bsdtar）既能解 .zip 也能解 .tar.bz2
+      const un = await extractZip(tmpFile, tmpDir);
       if (!un.ok) throw new Error(un.error || '解压引擎失败');
+      // 发行包通常多包一层同名目录，剥掉后合并进 si/voice/asr（bin/ 和 lib/ 一起带过来）
+      copyDirMerge(unwrapSingleRoot(tmpDir), VOICE_DIR);
+      if (!findVoiceBin()) throw new Error('引擎包里没找到 sherpa-onnx-vad-with-offline-asr.exe');
       taskFinish(task.id, { ok: true, detail: '引擎已就绪' });
     } catch (err) {
       taskFinish(task.id, { ok: false, detail: String(err && err.message ? err.message : err) });
       return { ok: false, error: String(err && err.message ? err.message : err) };
     } finally {
-      try {
-        fs.unlinkSync(tmpZip);
-      } catch (_) {
-        /* 临时文件可能没写出来 */
+      for (const target of [tmpFile, tmpDir]) {
+        try {
+          fs.rmSync(target, { recursive: true, force: true });
+        } catch (_) {
+          /* 临时文件可能没写出来 */
+        }
       }
     }
   }
 
-  // 模型
-  if (needModel && model.url) {
-    const fileName = model.file || path.basename(new URL(model.url).pathname) || 'ggml-base.bin';
-    const task = taskStart('正在下载 语音识别模型', { detail: fileName, cancelable: true });
+  // 模型：逐个文件下载，进度按总字节累加
+  if (missing.length) {
+    const total = missing.reduce((sum, f) => sum + (Number(f.bytes) || 0), 0);
+    const task = taskStart('正在下载 语音识别模型', { detail: 'SenseVoiceSmall int8', cancelable: true });
     const controller = new AbortController();
     task.abort = controller;
     try {
-      taskUpdate(task.id, { total: Number(model.bytes) || 0 });
-      const dest = path.join(VOICE_MODEL_DIR, fileName);
-      const part = `${dest}.part`;
-      await fetchToFile(model.url, part, {
-        signal: controller.signal,
-        onProgress: (received, total) => taskUpdate(task.id, { received, total: total || Number(model.bytes) || 0 }),
-      });
-      fs.renameSync(part, dest);
-      taskFinish(task.id, { ok: true, detail: fileName });
+      taskUpdate(task.id, { total });
+      let done = 0;
+      for (const file of missing) {
+        const sources = expandSources(file.sources, file.url, file.proxies);
+        if (!sources.length) throw new Error(`components.json 里没有配置 ${file.path} 的下载源`);
+        taskUpdate(task.id, { detail: file.path });
+        fs.mkdirSync(VOICE_MODEL_DIR, { recursive: true });
+        const dest = asrModelPath(file.path);
+        const part = `${dest}.part`;
+        const res = await downloadFirstOk(sources, part, {
+          signal: controller.signal,
+          onProgress: (received) => taskUpdate(task.id, { received: done + received, total }),
+        });
+        fs.renameSync(part, dest);
+        done += Number(file.bytes) || (res && res.bytes) || 0;
+        taskUpdate(task.id, { received: done, total });
+      }
+      taskFinish(task.id, { ok: true, detail: '模型已就绪' });
     } catch (err) {
       taskFinish(task.id, { ok: false, detail: String(err && err.message ? err.message : err) });
       return { ok: false, error: String(err && err.message ? err.message : err) };
     }
   }
 
-  return { ok: voiceStatus().ok, status: voiceStatus() };
+  const status = voiceStatus();
+  return { ok: status.ok, status };
 }
 
-// 导入 zip：语音识别（引擎或模型）解压后自动摆到 si/voice/asr
+// 导入组件包：引擎包（sherpa-onnx 发行包）或模型包（model.int8.onnx / tokens.txt / silero_vad.onnx）
 async function importVoiceZip() {
   if (!win || win.isDestroyed()) return { ok: false, error: '窗口尚未就绪' };
   const picked = await dialog.showOpenDialog(win, {
-    title: '选择 whisper.cpp / ggml 模型包（.zip）',
+    title: '选择 sherpa-onnx 引擎包或 SenseVoice 模型包',
     properties: ['openFile'],
-    filters: [{ name: 'ZIP 压缩包', extensions: ['zip'] }],
+    filters: [{ name: '组件包', extensions: ['zip', 'tar', 'bz2', 'tgz', 'gz'] }],
   });
   if (picked.canceled || !picked.filePaths.length) return { ok: false, canceled: true };
 
@@ -1355,21 +1365,19 @@ async function importVoiceZip() {
     const un = await extractZip(zipFile, tmp);
     if (!un.ok) throw new Error(un.error || '解压失败');
 
-    // 只有 ggml-*.bin 的包放进 models/，其余按引擎文件平铺
-    const bins = findFilesDeep(tmp, /^ggml-.*\.bin$/i);
-    if (bins.length) {
+    // 带 SenseVoice 模型文件的包进 models/；没有模型文件就按引擎包平铺到 si/voice/asr
+    const modelHits = findFilesDeep(tmp, /^(model(\.int8)?\.onnx|tokens\.txt|silero_vad\.onnx)$/i);
+    if (modelHits.length) {
       fs.mkdirSync(VOICE_MODEL_DIR, { recursive: true });
-      for (const bin of bins) fs.copyFileSync(bin, path.join(VOICE_MODEL_DIR, path.basename(bin)));
+      for (const file of modelHits) fs.copyFileSync(file, path.join(VOICE_MODEL_DIR, path.basename(file)));
+    } else {
+      copyDirMerge(unwrapSingleRoot(tmp), VOICE_DIR);
     }
-    const rest = unwrapSingleRoot(tmp);
-    const other = fs
-      .readdirSync(rest, { withFileTypes: true })
-      .filter((e) => !(e.isFile() && /^ggml-.*\.bin$/i.test(e.name)));
-    if (other.length) copyDirMerge(rest, VOICE_DIR);
 
     const files = voiceStatus();
-    taskFinish(task.id, { ok: files.ok, detail: files.ok ? '已就绪' : '还缺引擎或模型' });
-    return { ok: files.ok, missing: [], status: files };
+    const detail = files.ok ? '已就绪' : files.missing.length ? `还缺：${files.missing.join(' / ')}` : '还缺引擎或模型';
+    taskFinish(task.id, { ok: files.ok, detail });
+    return { ok: files.ok, missing: files.missing, status: files };
   } catch (err) {
     const message = String(err && err.message ? err.message : err);
     taskFinish(task.id, { ok: false, detail: message });
@@ -1383,9 +1391,7 @@ async function importVoiceZip() {
   }
 }
 
-// whisper 的多语言模型对简体没有偏好，同一段话可能一会儿简体、一会儿繁体。
-// 这里用离线字表把繁体统一回落成简体：词组优先（乾隆 / 乾坤这类简繁同形的词不能被单字表改坏）。
-// 实测给 whisper 传中文 initial prompt 反而更容易出繁体，所以不走 prompt，改在输出后处理。
+// 转写结果理论上已是简体，这里仍用离线字表兜底：词组优先（乾隆 / 乾坤这类简繁同形的词不能被单字表改坏）。
 let t2sTable = null;
 function loadT2sTable() {
   if (t2sTable) return t2sTable;
@@ -1430,32 +1436,46 @@ function toSimplified(text) {
   return out;
 }
 
-function transcribeWav(bytes, modelFile) {
+// sherpa-onnx 每段结果打成「start -- end: 文本」一行，其他都是加载日志，只挑这种行
+const ASR_LINE_RE = /^\s*(\d+(?:\.\d+)?)\s*--\s*(\d+(?:\.\d+)?):\s*(.+?)\s*$/;
+
+function collectAsrText(output) {
+  const segments = [];
+  for (const line of String(output || '').split(/\r?\n/)) {
+    const m = line.match(ASR_LINE_RE);
+    if (!m) continue;
+    const text = m[3].trim();
+    if (text) segments.push(text);
+  }
+  if (!segments.length) return '';
+  // 中日韩句子不需要空格拼接，英文/数字之间要留空格
+  const cjk = segments.some((s) => /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(s));
+  return segments.join(cjk ? '' : ' ');
+}
+
+function transcribeWav(bytes, _modelFile) {
   return new Promise((resolve) => {
     const status = voiceStatus();
     if (!status.bin) {
-      resolve({ ok: false, error: '未找到 whisper-cli 引擎，请在设置 → 语音里下载，或把 whisper.cpp 的 zip 导入 si/voice/asr/' });
+      resolve({
+        ok: false,
+        error: `未找到 sherpa-onnx 引擎（${VOICE_BIN_NAME}），请在设置 → 语音里下载，或把引擎包导入 si/voice/asr/`,
+      });
       return;
     }
-    // 用户可以在语音设置里指定模型；文件名限定在模型目录内，避免路径穿越
-    let model = status.model;
-    if (modelFile) {
-      const candidate = path.join(VOICE_MODEL_DIR, path.basename(String(modelFile)));
-      try {
-        if (fs.statSync(candidate).isFile()) model = candidate;
-      } catch (_) {
-        /* 指定的模型不存在时退回默认选择 */
-      }
-    }
-    if (!model) {
-      resolve({ ok: false, error: '未找到 ggml 模型，请在设置 → 语音里下载，或把 ggml-*.bin 放进 si/voice/asr/models/' });
+    const missing = asrMissingFiles().map((f) => f.path);
+    const tokens = asrModelPath('tokens.txt');
+    const vad = asrModelPath('silero_vad.onnx');
+    if (!status.model || missing.length) {
+      resolve({
+        ok: false,
+        error: `未找到 SenseVoice 模型${missing.length ? `（缺 ${missing.join(' / ')}）` : ''}，请在设置 → 语音里下载，或把模型文件放进 si/voice/asr/models/`,
+      });
       return;
     }
 
     const stamp = `si-voice-${Date.now()}-${process.pid}`;
     const wavPath = path.join(os.tmpdir(), `${stamp}.wav`);
-    const outBase = path.join(os.tmpdir(), stamp);
-    const txtPath = `${outBase}.txt`;
     try {
       fs.writeFileSync(wavPath, Buffer.from(bytes));
     } catch (err) {
@@ -1464,19 +1484,26 @@ function transcribeWav(bytes, modelFile) {
     }
 
     const threads = String(Math.max(2, Math.min(8, (os.cpus() || []).length || 4)));
-    const args = ['-m', model, '-f', wavPath, '-l', 'zh', '-nt', '-otxt', '-of', outBase, '-np', '-t', threads];
+    const args = [
+      `--tokens=${tokens}`,
+      `--sense-voice-model=${status.model}`,
+      '--sense-voice-language=auto',
+      '--sense-voice-use-itn=true',
+      `--silero-vad-model=${vad}`,
+      `--num-threads=${threads}`,
+      wavPath,
+    ];
     const child = spawn(status.bin, args, { cwd: path.dirname(status.bin), windowsHide: true });
 
+    let stdout = '';
     let stderr = '';
     let settled = false;
     let timer = null;
     const cleanup = () => {
-      for (const file of [wavPath, txtPath]) {
-        try {
-          fs.unlinkSync(file);
-        } catch (_) {
-          /* 临时文件可能没生成 */
-        }
+      try {
+        fs.unlinkSync(wavPath);
+      } catch (_) {
+        /* 临时文件可能已被清掉 */
       }
     };
     const finish = (result) => {
@@ -1493,28 +1520,33 @@ function transcribeWav(bytes, modelFile) {
       } catch (_) {
         /* 进程可能已退出 */
       }
-      finish({ ok: false, error: '转写超时（120 秒），可以换更小的模型或缩短录音' });
+      finish({ ok: false, error: '转写超时（120 秒），可以缩短录音后重试' });
     }, 120000);
 
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+      if (stdout.length > 200000) stdout = stdout.slice(-200000);
+    });
     child.stderr.on('data', (chunk) => {
       stderr += chunk.toString();
-      if (stderr.length > 8000) stderr = stderr.slice(-8000);
+      if (stderr.length > 200000) stderr = stderr.slice(-200000);
     });
     child.on('error', (err) => {
-      finish({ ok: false, error: `无法启动 whisper：${err && err.message ? err.message : err}` });
+      finish({ ok: false, error: `无法启动 sherpa-onnx：${err && err.message ? err.message : err}` });
     });
     child.on('close', (code) => {
       if (code !== 0) {
         const tail = stderr.trim().split(/\r?\n/).slice(-3).join(' ');
-        finish({ ok: false, error: `whisper 异常退出（${code}）${tail ? '：' + tail : ''}` });
+        finish({ ok: false, error: `sherpa-onnx 异常退出（${code}）${tail ? '：' + tail : ''}` });
         return;
       }
-      try {
-        const raw = fs.readFileSync(txtPath, 'utf8').replace(/^\uFEFF/, '').trim();
-        finish({ ok: true, text: toSimplified(raw) });
-      } catch (err) {
-        finish({ ok: false, error: `未读到转写结果：${err && err.message ? err.message : err}` });
+      // 结果可能走 stdout，也可能混在 stderr 的日志里，两处都收一遍
+      const text = collectAsrText(stdout) || collectAsrText(stderr);
+      if (!text) {
+        finish({ ok: true, text: '' });
+        return;
       }
+      finish({ ok: true, text: toSimplified(text) });
     });
   });
 }
@@ -2570,6 +2602,31 @@ function registerIpc() {
     if (win && !win.isDestroyed()) win.hide();
     return true;
   });
+  // 顶部拖动条：原生 -webkit-app-region: drag 会吞掉鼠标事件，做不了 hover 提示，
+  // 所以全透明模式的拖动条改由渲染层按下、主进程按屏幕坐标跟随鼠标移动窗口。
+  let windowDragTimer = null;
+  const stopWindowDrag = () => {
+    if (windowDragTimer) {
+      clearInterval(windowDragTimer);
+      windowDragTimer = null;
+    }
+  };
+  ipcMain.on('pet:window:drag-start', () => {
+    if (!win || win.isDestroyed() || windowDragTimer) return;
+    const from = screen.getCursorScreenPoint();
+    const [wx, wy] = win.getPosition();
+    const startedAt = Date.now();
+    windowDragTimer = setInterval(() => {
+      // 兜底：窗口没了 / 松手事件丢失时最多跟 60 秒
+      if (!win || win.isDestroyed() || Date.now() - startedAt > 60000) {
+        stopWindowDrag();
+        return;
+      }
+      const now = screen.getCursorScreenPoint();
+      win.setPosition(wx + (now.x - from.x), wy + (now.y - from.y));
+    }, 16);
+  });
+  ipcMain.on('pet:window:drag-stop', stopWindowDrag);
   ipcMain.handle('pet:minimize', () => {
     if (win && !win.isDestroyed()) win.minimize();
     return true;

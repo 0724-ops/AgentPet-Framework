@@ -5616,7 +5616,7 @@ el.chatInput.addEventListener('keydown', (e) => {
   }
 });
 
-// ------------------------------------------------------------------ 语音输入（本地 whisper.cpp）
+// ------------------------------------------------------------------ 语音输入（本地 sherpa-onnx + SenseVoice）
 // 点麦克风开始录音，再点一次结束；音频重采样到 16k 单声道 WAV 交给主进程转写。
 const voice = {
   ctx: null,
@@ -6002,7 +6002,7 @@ async function renderVoiceStatus() {
     if (install) install.hidden = false;
     return;
   }
-  binEl.textContent = status.bin || '未找到（whisper-cli.exe 需放到 si/voice/asr/）';
+  binEl.textContent = status.bin || '未找到（sherpa-onnx 引擎需放到 si/voice/asr/bin/）';
   binEl.classList.toggle('ok', !!status.bin);
 
   const models = Array.isArray(status.models) && status.models.length
@@ -6039,7 +6039,7 @@ async function renderVoiceStatus() {
   const chosen = models.find((m) => m.name === voiceModelFile);
   modelEl.textContent = chosen
     ? `${chosen.name}${fmtVoiceSize(chosen.size) ? ` · ${fmtVoiceSize(chosen.size)}` : ''}`
-    : status.model || '未找到（ggml-*.bin 需放到 si/voice/asr/models/）';
+    : status.model || '未找到（SenseVoice 模型需放到 si/voice/asr/models/）';
   modelEl.classList.toggle('ok', models.length > 0);
 
   // 装齐后隐藏「下载 / 导入」，只在缺失时露出来
@@ -11968,6 +11968,34 @@ $('#btn-close').onclick = () => {
     toast('已收起到系统托盘，右键托盘图标可退出');
   }
 };
+
+// 全透明模式的顶部拖动条：按下抓住窗口，主进程按屏幕坐标跟随鼠标
+(() => {
+  const hint = $('#drag-hint');
+  if (!hint) return;
+  let dragging = false;
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    hint.classList.remove('dragging');
+    if (window.petApi && window.petApi.stopWindowDrag) window.petApi.stopWindowDrag();
+  };
+  hint.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !window.petApi || !window.petApi.startWindowDrag) return;
+    dragging = true;
+    hint.classList.add('dragging');
+    try {
+      hint.setPointerCapture(e.pointerId);
+    } catch (_) {
+      /* 捕获失败也不影响移动，只是松手在窗口外可能收不到 pointerup */
+    }
+    window.petApi.startWindowDrag();
+    e.preventDefault();
+  });
+  hint.addEventListener('pointerup', stop);
+  hint.addEventListener('pointercancel', stop);
+  hint.addEventListener('lostpointercapture', stop);
+})();
 
 // ------------------------------------------------------------------ 状态轮询
 let fpsFrames = 0;

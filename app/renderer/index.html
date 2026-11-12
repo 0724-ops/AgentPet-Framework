@@ -39,6 +39,9 @@
         </div>
       </header>
 
+      <!-- 全透明模式：顶部拖动提示条（鼠标放上去才显示） -->
+      <div class="drag-hint" id="drag-hint" title="拖动窗口"></div>
+
       <!-- 中央舞台：3D 内核 iframe（透明、不拦截鼠标） -->
       <main class="stage" id="stage">
         <iframe id="pet-frame" title="角色" allowtransparency="true"></iframe>
@@ -681,7 +684,7 @@
             <div class="preset-head">
               <div>
                 <h2>语音输入</h2>
-                <p class="page-desc">本地 whisper.cpp 离线转写。点麦克风开始，再点一次结束；结果只填入输入框，不会自动发送。</p>
+                <p class="page-desc">本地 sherpa-onnx + SenseVoiceSmall（int8）离线转写。点麦克风开始，再点一次结束；结果只填入输入框，不会自动发送。</p>
               </div>
               <button class="btn-ghost-sm" id="btn-voice-refresh">重新检测</button>
             </div>
@@ -694,7 +697,7 @@
             </div>
             <div class="voice-install" id="voice-install" hidden>
               <button class="btn-ghost-sm" id="btn-voice-download">下载组件</button>
-              <button class="btn-ghost-sm" id="btn-voice-import">导入 zip</button>
+              <button class="btn-ghost-sm" id="btn-voice-import">导入组件包</button>
             </div>
 
             <div class="preset-head tts-head">

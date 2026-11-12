@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('petApi', {
   quit: () => ipcRenderer.invoke('pet:quit'),
   hideWindow: () => ipcRenderer.invoke('pet:hide'),
   minimize: () => ipcRenderer.invoke('pet:minimize'),
+  // 全透明模式的顶部拖动条：按下开始跟随鼠标移动窗口，松开结束
+  startWindowDrag: () => ipcRenderer.send('pet:window:drag-start'),
+  stopWindowDrag: () => ipcRenderer.send('pet:window:drag-stop'),
 
   getPinned: () => ipcRenderer.invoke('pet:pin:get'),
   // 后台回复通知：渲染层只在设置开关打开时调用，是否真的弹由主进程按窗口焦点决定
@@ -87,7 +90,7 @@ contextBridge.exposeInMainWorld('petApi', {
   readToolsConfig: () => ipcRenderer.invoke('preset:read-tools'),
   writeToolsConfig: (config) => ipcRenderer.invoke('preset:write-tools', config),
 
-  // 语音输入：本地 whisper.cpp（si/voice/asr，缺失时按需下载 / 导入 zip）
+  // 语音输入：本地 sherpa-onnx（si/voice/asr，缺失时按需下载 / 导入组件包）
   voiceStatus: () => ipcRenderer.invoke('voice:status'),
   voiceDownload: () => ipcRenderer.invoke('voice:download'),
   voiceImportZip: () => ipcRenderer.invoke('voice:import-zip'),

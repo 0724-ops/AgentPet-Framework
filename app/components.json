@@ -8,14 +8,40 @@
       "dir": "voice/asr",
       "modelsDir": "voice/asr/models",
       "engine": {
-        "type": "github-release",
-        "repo": "ggml-org/whisper.cpp",
-        "asset": "whisper-bin-x64.zip"
+        "type": "direct",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-v2.0.1-win-x64-shared-MD-Release-no-tts.tar.bz2",
+        "file": "sherpa-onnx-v2.0.1-win-x64-shared-MD-Release-no-tts.tar.bz2",
+        "bytes": 20962760,
+        "proxies": ["https://gh-proxy.com/", "https://ghfast.top/"]
       },
       "model": {
-        "file": "ggml-base.bin",
-        "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
-        "bytes": 147951465
+        "note": "SenseVoiceSmall int8 + Silero VAD；sources 按顺序尝试，国内优先走镜像。",
+        "files": [
+          {
+            "path": "model.int8.onnx",
+            "bytes": 239233841,
+            "sources": [
+              "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx",
+              "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx"
+            ]
+          },
+          {
+            "path": "tokens.txt",
+            "bytes": 315894,
+            "sources": [
+              "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt",
+              "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt"
+            ]
+          },
+          {
+            "path": "silero_vad.onnx",
+            "bytes": 643854,
+            "sources": [
+              "https://gh-proxy.com/https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+              "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
+            ]
+          }
+        ]
       }
     }
   },

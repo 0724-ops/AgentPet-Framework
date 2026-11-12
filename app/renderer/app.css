@@ -126,6 +126,59 @@ button {
   -webkit-app-region: drag;
 }
 
+/* 全透明模式：没有面板和边框做参照，右上角 min/close 收掉（退出走托盘菜单） */
+.app-window.bg-clear .window-controls {
+  display: none;
+}
+
+/* 顶部拖动提示条：平时完全透明，鼠标进入这条 140×22 的热区才露出灰色短条。
+   不能用 -webkit-app-region: drag（那样收不到 mouseenter，hover 永远不触发），
+   拖动由渲染层按下 + 主进程跟随鼠标移动窗口实现。 */
+.drag-hint {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 22px;
+  z-index: 30;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 7px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s;
+  -webkit-app-region: no-drag;
+}
+
+.app-window.bg-clear .drag-hint {
+  display: flex;
+}
+
+.drag-hint::before {
+  content: '';
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.drag-hint:hover,
+.drag-hint.dragging {
+  opacity: 1;
+}
+
+.drag-hint.dragging {
+  cursor: grabbing;
+}
+
+/* 设置浮层打开时让位，避免压住顶栏 */
+.app-window:has(#settings-panel.show) .drag-hint {
+  display: none;
+}
+
 /* ---------------------------------------------------------------- 顶部栏 */
 .top-bar {
   position: absolute;
