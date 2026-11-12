@@ -111,6 +111,8 @@ const settings = store.get('agentpet.settings', {
   visualOffInBackground: false,
   // 切换角色时是否先把当前会话存入归档（默认关）
   archiveOnSwitch: false,
+  // 切换角色后是否按新角色的动作库重建 ACTIONS（默认关）
+  rebuildActionsOnSwitch: false,
 });
 // 老版本存下来的设置里没有 scalePivot，补一个默认值（0 = 缩放时脚底不动）
 if (typeof settings.scalePivot !== 'number') settings.scalePivot = 0;
@@ -170,6 +172,9 @@ settings.imageReadPerm = !!settings.imageReadPerm;
 // 切换角色自动归档：默认关闭
 if (settings.archiveOnSwitch == null) settings.archiveOnSwitch = false;
 settings.archiveOnSwitch = !!settings.archiveOnSwitch;
+// 切换角色自动重建动作预设：默认关闭
+if (settings.rebuildActionsOnSwitch == null) settings.rebuildActionsOnSwitch = false;
+settings.rebuildActionsOnSwitch = !!settings.rebuildActionsOnSwitch;
 // 渲染后端 / 超分 / 帧生成 / 性能档（1.3.0 内核新增）：老版本没有这些键，补默认值并夹取
 if (settings.kernelBackend !== 'webgpu' && settings.kernelBackend !== 'webgl') settings.kernelBackend = 'webgl';
 if (settings.fsrOn == null) settings.fsrOn = false;
@@ -7226,6 +7231,11 @@ async function onCharacterCard(ch) {
     await loadChatSession();
     // fetchActions(true) 内部会先刷新 actions.json 的中文名与分类
     await fetchActions(true);
+    // 开关打开时，相当于自动按一次「从动作库重建」：用新角色的动作清单覆盖 preset-actions.md
+    if (settings.rebuildActionsOnSwitch) {
+      await rebuildActionsPreset();
+      consoleLog('系统', `已按新角色动作库重建 ACTIONS（${actions.length} 条）`);
+    }
     void loadMemoryDb({ silent: true });
     syncRenderBackendUi();
     renderChat();
@@ -8671,12 +8681,18 @@ ${derived.map((a) => `| \`${a.name}\` | ${shortName(a.name)} | 内核从剪辑�
 `;
 }
 
-$('#btn-regenerate-actions').onclick = async () => {
+// 按当前动作库重建 ACTIONS 并写回 preset-actions.md
+// 「从动作库重建」按钮和「切换角色时重建动作预设」开关共用这一份逻辑
+async function rebuildActionsPreset() {
   presetActionsMd = buildActionsMd();
   presetActionsDirty = false;
   el.presetActions.value = presetActionsMd;
   syncCommonActions(presetActionsMd);
   await savePresetActions();
+}
+
+$('#btn-regenerate-actions').onclick = async () => {
+  await rebuildActionsPreset();
   toast('已按动作库重建 ACTIONS，并写回 preset-actions.md', 'accent');
   consoleLog('系统', `ACTIONS 已从动作库重建（${actions.length} 条）`);
 };
@@ -10328,6 +10344,17 @@ if (archiveOnSwitchToggle) {
     settings.archiveOnSwitch = archiveOnSwitchToggle.checked;
     store.set('agentpet.settings', settings);
     toast(settings.archiveOnSwitch ? '切换角色时会先归档当前会话' : '切换角色时不再自动归档');
+  };
+}
+
+// 切换角色时是否按新角色动作库重建 ACTIONS（默认关）
+const rebuildActionsOnSwitchToggle = $('#set-rebuild-actions-on-switch');
+if (rebuildActionsOnSwitchToggle) {
+  rebuildActionsOnSwitchToggle.checked = settings.rebuildActionsOnSwitch === true;
+  rebuildActionsOnSwitchToggle.onchange = () => {
+    settings.rebuildActionsOnSwitch = rebuildActionsOnSwitchToggle.checked;
+    store.set('agentpet.settings', settings);
+    toast(settings.rebuildActionsOnSwitch ? '切换角色时会重建动作预设' : '切换角色时不再重建动作预设');
   };
 }
 
