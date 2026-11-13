@@ -73,7 +73,8 @@ const settings = store.get('agentpet.settings', {
   notifyBackground: true,
   // 图片读取权限：关闭 = 只允许本会话里拖入 / 输入过的图片路径
   imageReadPerm: false,
-  memoryEnabled: true,
+  // 长期记忆默认关：需要时在设置页手动开启，开启时才按需下载向量模型
+  memoryEnabled: false,
   memoryExtractEvery: 3,
   memoryModel: '',
   // 长程记忆读取参数（Step 3）
@@ -139,8 +140,8 @@ if (!Number.isFinite(settings.compressIdleTimeoutSec)) settings.compressIdleTime
 settings.compressIdleTimeoutSec = Math.max(30, Math.min(600, Math.round(settings.compressIdleTimeoutSec)));
 if (!Number.isFinite(settings.llmRetries)) settings.llmRetries = 3;
 settings.llmRetries = Math.max(0, Math.min(5, Math.round(settings.llmRetries)));
-// 自动记忆：老版本没有这几个键，补默认值并夹取范围
-if (settings.memoryEnabled == null) settings.memoryEnabled = true;
+// 自动记忆：老版本没有这几个键，补默认值并夹取范围（默认关）
+if (settings.memoryEnabled == null) settings.memoryEnabled = false;
 if (!Number.isFinite(settings.memoryExtractEvery)) settings.memoryExtractEvery = 3;
 settings.memoryExtractEvery = Math.max(1, Math.min(10, Math.round(settings.memoryExtractEvery)));
 if (typeof settings.memoryModel !== 'string') settings.memoryModel = '';
@@ -1602,6 +1603,21 @@ async function settleLongMemory(marks = []) {
     consoleLog('记忆', bits.join(' · '));
   } catch (err) {
     consoleLog('警告', `记忆结算失败：${err && err.message ? err.message : err}`);
+  }
+}
+
+// 开启长期记忆时先检查向量模型：没装才开始下载，不用等第一句话
+async function ensureMemoryModel() {
+  if (!window.petApi || typeof petApi.memoryStatus !== 'function') return;
+  try {
+    const status = await petApi.memoryStatus();
+    if (status && status.modelReady) return;
+    toast('正在下载记忆向量模型…');
+    const res = await petApi.memoryEnsureModel();
+    if (res && res.ok) toast('向量模型已就绪');
+    else if (res && res.error) toast(`向量模型下载失败：${res.error}`);
+  } catch (err) {
+    toast(`向量模型下载失败：${err && err.message ? err.message : err}`);
   }
 }
 
@@ -9719,6 +9735,7 @@ if (memEnabledInput) {
     settings.memoryEnabled = memEnabledInput.checked;
     store.set('agentpet.settings', settings);
     toast(settings.memoryEnabled ? '长期记忆已开启' : '长期记忆已关闭');
+    if (settings.memoryEnabled) void ensureMemoryModel();
   };
 }
 
