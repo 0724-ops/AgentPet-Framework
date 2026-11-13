@@ -139,6 +139,7 @@ function makeCtx(tenant) {
     // 壳层状态回调（plugin.json 的 capabilities 里要声明 "state" 才会收到）：
     //   kernel：{ status: 'ready' | 'stopped', actions?: [动作名] }
     //   state ：{ at: 最后活动时间戳, kind, kernel, busy, current, queueLength }
+    //   chat  ：{ role, text, at, seq } 模型回复完成（即时，不补发）
     // 注册时会补发最近一份，所以 init 里注册就不会漏掉启动前的 kernel ready。
     onShellEvent(handler) {
       if (typeof handler !== 'function') return () => {};
@@ -323,6 +324,12 @@ async function handleMessage(msg) {
     const tenant = tenantOf(msg.pluginId);
     if (!tenant) return;
     const event = String(msg.event || '');
+    // chat 是即时消息，不缓存、不补发
+    if (event === 'chat') {
+      const data = clone(msg.data) || {};
+      for (const handler of tenant.shellHandlers) callShellHandler(tenant, handler, event, data);
+      return;
+    }
     if (event !== 'kernel' && event !== 'state') return;
     const data = clone(msg.data) || {};
     tenant.lastShell[event] = data;

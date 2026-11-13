@@ -1062,6 +1062,7 @@ function createPluginHost({
   // 壳层 → 插件：只有声明 capabilities:["state"] 的插件才收（渲染层节流后推过来）。
   //   kernel  内核状态变化（ready / stopped），ready 时附带动作名清单
   //   state   周期快照（最后活动时间、队列与内核是否空闲）
+  //   chat    模型回复完成，{ role, text, at, seq }（video-call 用它把文字推到手机）
   // 新就绪的插件会补发最近一份快照，避免插件比壳晚启动就收不到「内核已就绪」
   const lastShell = { kernel: null, state: null };
 
@@ -1074,6 +1075,12 @@ function createPluginHost({
   function pushShellEvent(payload) {
     if (!payload || typeof payload !== 'object') return;
     const event = String(payload.event || '');
+    // chat 是模型回复的即时消息：只转发当前在线的插件，不做补发（补发一句旧回复没有意义）
+    if (event === 'chat') {
+      const data = payload.data === undefined ? null : payload.data;
+      for (const tenant of workers.values()) sendShell(tenant, event, data);
+      return;
+    }
     if (event !== 'kernel' && event !== 'state') return;
     lastShell[event] = payload.data === undefined ? null : payload.data;
     for (const tenant of workers.values()) sendShell(tenant, event, lastShell[event]);

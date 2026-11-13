@@ -810,6 +810,13 @@ function pushShellKernel(force = false) {
   pushShellState('kernel');
 }
 
+// 把模型最终回复同步给插件（video-call 会把文字推到手机网页）
+function pushShellChat(text, seq) {
+  const body = String(text || '').trim();
+  if (!body) return;
+  sendShellPayload('chat', { role: 'assistant', text: body, at: Date.now(), seq: Number(seq) || 0 });
+}
+
 function markUserActivity(kind) {
   shellPush.lastActivityAt = Date.now();
   pushShellState(kind);
@@ -4465,6 +4472,7 @@ async function runAgent() {
           renderChat();
           scheduleConsoleRender();
         } else if (msg.text) {
+          pushShellChat(msg.text, msg.seq);
           autoReadReply(speakSourceOf(msg), { raw: msg.text, speak: msg.speakText });
         }
         return;
@@ -4567,6 +4575,8 @@ function cancelChat() {
       // 没吐出任何内容、也没有工具记录的空气泡直接丢掉
       if (!m.text && !m.think && !(m.toolOnly && m.toolCalls && m.toolCalls.length)) return;
       if (m.text || m.think) m.stopped = true;
+      // 停止生成也把已经流出的文字同步给手机端，避免两边内容不一致
+      if (m.text) pushShellChat(m.text, m.seq);
     }
     kept.push(m);
   });
@@ -4683,6 +4693,7 @@ async function sendMessage(text, refs) {
   setTimeout(() => {
     const reply = mockIntent(text);
     const msg = pushChat({ role: 'ai', think: reply.think, text: reply.text, thinkOpen: false });
+    pushShellChat(reply.text, msg.seq);
     const actions = reply.interrupt ? [reply.interrupt] : reply.actions || [];
     if (reply.interrupt) {
       queue.interrupt(reply.interrupt);
