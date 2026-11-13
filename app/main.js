@@ -3116,6 +3116,15 @@ function registerIpc() {
       return { ok: false, text: src, error: String(err && err.message ? err.message : err) };
     }
   });
+  // @ 引用面板：最近用过的图片（按 last_used 倒序）
+  ipcMain.handle('image:alias-list', (_e, limit) => {
+    try {
+      const n = Math.max(1, Math.min(20, Math.round(Number(limit) || 5)));
+      return { ok: true, items: imageAlias.list(n) };
+    } catch (err) {
+      return { ok: false, items: [], error: String(err && err.message ? err.message : err) };
+    }
+  });
   // 剪贴板截图没有磁盘路径：先落盘，后续流程与拖入文件一致
   ipcMain.handle('image:save-temp', (_e, payload) => {
     try {

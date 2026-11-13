@@ -1760,7 +1760,7 @@ function buildSystemNotice(m) {
   lead.textContent = '这条通知触发了本轮回复。';
   const text = document.createElement('div');
   text.className = 'sys-notice-text';
-  text.textContent = String(m.text || '').replace(/^\[系统信息\]\s*/, '');
+  text.textContent = shortImagePaths(String(m.text || '').replace(/^\[系统信息\]\s*/, ''));
   body.append(lead, text);
 
   const toggle = () => {
@@ -1777,6 +1777,24 @@ function buildSystemNotice(m) {
 
   box.append(head, body);
   return box;
+}
+
+// 对话气泡里图片只显示文件名：完整路径仍保存在 m.text（发给模型时换成别名），
+// 代码块里的路径不动，避免把用户贴的示例代码显示坏了
+const CHAT_FENCE_RE = /```[\s\S]*?(?:```|$)/g;
+function shortImagePaths(text) {
+  const src = String(text || '');
+  if (!src || src.indexOf('.') < 0) return src;
+  const shorten = (chunk) => chunk.replace(IMAGE_PATH_REGEX, (whole) => baseName(whole));
+  let out = '';
+  let last = 0;
+  for (const hit of src.matchAll(CHAT_FENCE_RE)) {
+    if (hit.index > last) out += shorten(src.slice(last, hit.index));
+    out += hit[0];
+    last = hit.index + hit[0].length;
+  }
+  if (last < src.length) out += shorten(src.slice(last));
+  return out;
 }
 
 function renderChat() {
@@ -1872,7 +1890,7 @@ function renderChat() {
       // 壳层提示（如轮次上限熔断）只展示给用户，不进入模型历史
       msg.textContent = m.text || '';
     } else {
-      msg.textContent = m.text || '';
+      msg.textContent = shortImagePaths(m.text || '');
     }
     // 时间只挂在用户请求的气泡旁边；回答正文里不再逐段重复时间
     if (m.role === 'user') {
@@ -4643,6 +4661,7 @@ async function sendMessage(text, refs) {
   markUserActivity('chat'); // 发消息也算「用户在操作」，待机判定要重新计时
   // 本会话出现过的图片路径：图片读取权限关闭时，read_image 只放行这些
   for (const hit of String(text || '').matchAll(IMAGE_PATH_REGEX)) addAllowedImagePath(hit[0].trim());
+  mentionImagesAt = 0; // 新图片已入会话：让 @ 面板下次重新拉取最近图片
   const cfg = getApiConfig();
   const online = !!cfg.key && !cfg.builtin && cfg.id !== 'mock';
 
@@ -5118,6 +5137,11 @@ const REF_ICONS = {
     '<path d="M14 3.5v5h5"/>' +
     '<line x1="8.5" y1="12.5" x2="15.5" y2="12.5"/>' +
     '<line x1="8.5" y1="16.5" x2="13" y2="16.5"/></svg>',
+  image:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<rect x="3" y="4" width="18" height="16" rx="2"/>' +
+    '<circle cx="8.5" cy="9.5" r="1.4"/>' +
+    '<path d="M4.5 17.5l4.5-4 3.2 2.8 3-2.5 4.3 3.7"/></svg>',
 };
 
 const slashState = {
@@ -5274,10 +5298,10 @@ function renderSlashMenu() {
   if (!slashState.items.length) {
     const empty = document.createElement('div');
     empty.className = 'slash-empty';
-    empty.textContent = isMentions ? '没有匹配的会话或笔记' : '没有匹配的指令';
+    empty.textContent = isMentions ? '没有匹配的图片、会话或笔记' : '没有匹配的指令';
     list.appendChild(empty);
   } else if (isMentions) {
-    // 引用面板按来源分组：先「会话」再「笔记」，组内保持原有顺序
+    // 引用面板按来源分组：图片 → 会话 → 笔记，组内保持原有顺序
     let group = '';
     slashState.items.forEach((item, i) => {
       if (item.group && item.group !== group) {
@@ -5507,10 +5531,42 @@ function refDaysAgo(ts) {
   return `${days}天`;
 }
 
+// 最近用过的图片（@ 面板只列 5 条）：读主进程别名表，带短暂缓存，避免每次键入都走 IPC
+const MENTION_IMAGE_LIMIT = 5;
+let mentionImages = [];
+let mentionImagesAt = 0;
+async function refreshMentionImages(maxAgeMs = 1500) {
+  if (Date.now() - mentionImagesAt < maxAgeMs) return mentionImages;
+  mentionImagesAt = Date.now();
+  try {
+    const r = window.petApi && window.petApi.imageAliasList ? await window.petApi.imageAliasList(MENTION_IMAGE_LIMIT) : null;
+    if (r && r.ok && Array.isArray(r.items)) {
+      mentionImages = r.items
+        .filter((it) => it && it.alias && it.path)
+        .map((it) => ({
+          kind: 'image',
+          id: it.path,
+          name: baseName(it.path),
+          alias: it.alias,
+          group: '图片',
+          meta: `${it.alias} · ${refDaysAgo(it.last_used || it.added_at)}`,
+        }));
+    }
+  } catch (_) {
+    /* 别名表读不到时只是不列图片 */
+  }
+  return mentionImages;
+}
+
 function buildMentionItems(query) {
   const q = String(query || '').trim().toLowerCase();
   const hit = (text) => !q || String(text || '').toLowerCase().includes(q);
   const items = [];
+  // 图片排在最前：@ 最常见的用途就是把刚看过的图再引用回来
+  mentionImages.forEach((it) => {
+    if (!hit(it.name) && !hit(it.alias)) return;
+    items.push(it);
+  });
   archives.forEach((a) => {
     if (!hit(a.title)) return;
     // 归档跨角色可见：显示角色名，避免同名会话分不清
@@ -5554,7 +5610,19 @@ function syncMentionMenu(editor) {
     close();
     return;
   }
+  // 先用缓存立刻出面板，再异步补上「最近图片」，查询词没变才重绘
   showSlashMentions(editor, query);
+  void refreshMentionImages().then(() => {
+    if (slashState.editor !== editor || slashState.mode !== 'mentions') return;
+    if (!slashState.dom || slashState.dom.hidden) return;
+    const now = composerText(editor);
+    if ((now.match(/@/g) || []).length !== 1) return;
+    if (now.slice(now.indexOf('@') + 1) !== query) return;
+    const keep = slashState.index;
+    showSlashMentions(editor, query);
+    slashState.index = Math.min(Math.max(0, keep), Math.max(0, slashState.items.length - 1));
+    renderSlashMenu();
+  });
 }
 
 // 从最后一个「@」删到文末（连带用户输入的查询词），再在原位插入引用标签
@@ -5572,7 +5640,9 @@ function lastTextNodeWith(editor, ch) {
 
 function insertRefChip(editor, item) {
   if (!editor || !item) return;
-  const chip = makeRefChip(item.kind, item.id, item.name);
+  // 图片沿用输入框里的图片标签：显示文件名，序列化仍是完整路径
+  if (item.kind === 'image') addAllowedImagePath(item.id);
+  const chip = item.kind === 'image' ? makeImageChip(item.id, item.name) : makeRefChip(item.kind, item.id, item.name);
   const spot = lastTextNodeWith(editor, '@');
   const range = document.createRange();
   if (spot && editor.lastChild) {
@@ -12188,6 +12258,8 @@ async function bootstrap() {
   await loadActionMeta();
   // 插件注册表先读：工具管理里要按插件分组显示，也需要权限清单做二次确认
   await loadPlugins();
+  // 预热 @ 面板的「最近图片」，第一次按 @ 不用等 IPC
+  void refreshMentionImages(0);
   // 可插拔工具注册表：决定系统提示里拼哪些工具说明、执行时放行哪些 Tool Call
   await loadToolsConfig();
   // 归档改由文件承载，先读盘（首次会把 localStorage 的旧归档迁过来）
