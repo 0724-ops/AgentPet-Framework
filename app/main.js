@@ -38,6 +38,7 @@ const { pathToFileURL } = require('url');
 const { createMemoryHost } = require('./memory-host');
 const { createPluginHost } = require('./plugin-host');
 const { createCharacterHost } = require('./character-host');
+const { createImageAlias } = require('./image-alias');
 
 // ------------------------------------------------------------------ WebGPU
 // 新内核（poc4）走原生 WebGPU。Chromium 在部分机器上会因 GPU blocklist 直接不给 device，
@@ -1765,6 +1766,9 @@ const IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const IMAGE_MAX_EDGE = 1568;
 const IMAGE_CACHE_DIR = path.join(app.getPath('userData'), 'image-cache');
 const IMAGE_SAVE_DIR = path.join(IMAGE_CACHE_DIR, 'pasted');
+// 图片虚拟别名：模型只看 [image_N]，物理路径一直留在主进程
+const imageAlias = createImageAlias({ dir: path.join(DATA_ROOT || PROFILE_DIR, 'image-map'), log });
+const IMAGE_EXPIRED = '图片不存在或已过期，请让用户重新上传。';
 
 // 归档这类会持续变大的数据不再放 localStorage（只有 5MB 级容量），
 // 统一落到 userData/data/<key>.json，白名单之外一律拒绝，避免渲染层乱写文件
@@ -3081,10 +3085,35 @@ function registerIpc() {
     return { ok: true, path: checked.path, name: path.basename(checked.path), size: checked.size };
   });
   ipcMain.handle('image:read', (_e, filePath) => {
+    const requested = String(filePath || '').trim();
+    // 模型传的是别名：查表还原；表里没有或文件已失效都只回一句「已过期」
+    if (/^\[?image_\d+\]?$/i.test(requested)) {
+      try {
+        const real = imageAlias.resolveAlias(requested);
+        if (!real) return { ok: false, error: IMAGE_EXPIRED };
+        const r = readImageDataUrl(real);
+        if (!r || !r.ok) {
+          imageAlias.remove(requested);
+          return { ok: false, error: IMAGE_EXPIRED };
+        }
+        return { ...r, alias: requested };
+      } catch (_) {
+        return { ok: false, error: IMAGE_EXPIRED };
+      }
+    }
     try {
-      return readImageDataUrl(filePath);
+      return readImageDataUrl(requested);
     } catch (err) {
       return { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+  });
+  // 发送给模型前把文本里的图片路径换成别名（代码块里的不动）
+  ipcMain.handle('image:alias-text', (_e, text, options) => {
+    const src = String(text == null ? '' : text);
+    try {
+      return { ok: true, text: imageAlias.aliasizeText(src, options || {}) };
+    } catch (err) {
+      return { ok: false, text: src, error: String(err && err.message ? err.message : err) };
     }
   });
   // 剪贴板截图没有磁盘路径：先落盘，后续流程与拖入文件一致

@@ -122,13 +122,13 @@
       "label": "读取图片",
       "icon": "image",
       "enabled": true,
-      "prompt": "读取一张本地图片并查看画面内容。用户把图片拖进输入框、或在消息里写出图片路径后，对话里只会出现路径文本；需要真正看清画面时调用本工具，参数是图片的绝对路径。支持 png / jpg / jpeg / webp / gif / bmp，单张不超过 20MB。一次只读一张，需要看多张就多次调用。",
+      "prompt": "读取一张本地图片并查看画面内容。对话里的图片以程序分配的别名出现（如 [image_3]），需要看清画面时就把这个别名原样传给本工具。支持 png / jpg / jpeg / webp / gif / bmp，单张不超过 20MB。一次只读一张，需要看多张就多次调用。",
       "schema": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
-            "description": "图片的绝对路径，例如 C:/Users/me/Pictures/shot.png"
+            "description": "图片别名，例如 [image_3]"
           }
         },
         "required": [

@@ -2242,7 +2242,8 @@ async function runMemoryExtraction({ manual = false } = {}) {
   memoryExtracting = true;
   setMemStatus('提取中…');
   try {
-    const acc = await callLLM([{ role: 'system', content: memoryExtractPrompt(dialog) }], { modelId: cfg.id });
+    const safeDialog = await aliasizeForModel(dialog, { bare: true, onlyPaths: sessionImagePaths() });
+    const acc = await callLLM([{ role: 'system', content: memoryExtractPrompt(safeDialog) }], { modelId: cfg.id });
     const items = parseMemoryExtraction(acc && acc.content);
     const stat = items.length ? upsertMemoryFacts(items) : { added: 0, superseded: 0, refreshed: 0 };
     // 无论 SKIP 还是解析失败，都把游标推到当前最新，避免下一轮反复重试同一段
@@ -4309,7 +4310,8 @@ async function runAgent() {
   syncConsoleSendButton();
   chatCancel = { cancelled: false, abort: null };
   // 真正组装请求：记忆检索已在 sendMessage 里完成（异步，避免阻塞渲染）
-  const apiMessages = buildChatMessages();
+  // 发送前统一把图片路径换成别名，模型全程看不到物理路径
+  const apiMessages = await aliasizeMessages(buildChatMessages());
   const persist = () => saveChatSession();
   let turnCompleted = false;
   // Step 4：本轮所有工具轮次里出现的 MEM_MARK 编号，轮次结束统一结算
@@ -4474,15 +4476,21 @@ async function runAgent() {
         } finally {
           endToolRun(msg, pending, res);
         }
-        apiMessages.push({ role: 'tool', tool_call_id: call.id, content: res.content });
+        // 插件工具可能返回裸路径（如 latest_frame），这里统一换成别名再交给模型
+        const toolContent = await aliasizeForModel(res.content, { bare: true });
+        apiMessages.push({ role: 'tool', tool_call_id: call.id, content: toolContent });
         // read_image 的图片本体：tool 角色只能带纯文本，所以紧跟一条多模态 user 消息。
         // 模型不支持视觉时 callLLM 会在 400/422 上自动剥掉图片重发（见 callLLM）。
         if (res && res.imageDataUrl) {
           const meta = (res.extra && res.extra.image) || {};
+          const note = await aliasizeForModel(`[图片] ${meta.name || ''} ${meta.path || ''}`.trim(), {
+            bare: true,
+            onlyPaths: sessionImagePaths(),
+          });
           apiMessages.push({
             role: 'user',
             content: [
-              { type: 'text', text: `[图片] ${meta.name || ''} ${meta.path || ''}`.trim() },
+              { type: 'text', text: note },
               { type: 'image_url', image_url: { url: res.imageDataUrl } },
             ],
           });
@@ -4692,12 +4700,14 @@ const IMAGE_CHIP_SVG =
   '</svg>';
 
 // 图片允许清单：权限关闭时，只放行本会话里拖入 / 输入过的图片
-const allowedImagePaths = new Set();
+// key（归一化）→ 原始路径，原始路径还要交给主进程做别名替换
+const allowedImagePaths = new Map();
 function imagePathKey(p) {
   return String(p || '').replace(/\\/g, '/').trim().toLowerCase();
 }
 function addAllowedImagePath(p) {
-  if (p) allowedImagePaths.add(imagePathKey(p));
+  const key = imagePathKey(p);
+  if (key) allowedImagePaths.set(key, String(p).trim());
 }
 function historyImageKeys() {
   const keys = new Set();
@@ -4716,6 +4726,39 @@ function imagePathAllowed(filePath) {
   if (!key) return false;
   if (allowedImagePaths.has(key)) return true;
   return historyImageKeys().has(key);
+}
+
+// 本会话出现过的图片原始路径：只有这些裸路径才允许被换成别名，避免误伤代码里的路径
+function sessionImagePaths() {
+  const out = new Set(allowedImagePaths.values());
+  chatState.messages.forEach((m) => {
+    if (!m || m.role !== 'user') return;
+    for (const hit of String(m.text || '').matchAll(IMAGE_PATH_REGEX)) out.add(hit[0].trim());
+  });
+  return [...out];
+}
+
+// 模型侧文本别名化：物理路径只留在主进程，模型只看 [image_N]
+async function aliasizeForModel(text, options) {
+  if (typeof text !== 'string' || !text) return text;
+  if (!window.petApi || !window.petApi.imageAliasText) return text;
+  try {
+    const r = await window.petApi.imageAliasText(text, options);
+    return r && r.ok ? r.text : text;
+  } catch (_) {
+    return text;
+  }
+}
+
+// 组装好的请求逐条别名化：用户消息只换本会话出现过的图片路径；
+// 工具 / 助手历史允许裸路径（插件工具本来就返回裸路径）
+async function aliasizeMessages(messages) {
+  const onlyPaths = sessionImagePaths();
+  for (const m of messages) {
+    if (!m || m.role === 'system' || typeof m.content !== 'string' || !m.content) continue;
+    m.content = await aliasizeForModel(m.content, m.role === 'user' ? { bare: true, onlyPaths } : { bare: true });
+  }
+  return messages;
 }
 
 // contenteditable → 纯文本：标签节点输出它保存的绝对路径，<br>/<div> 补换行
@@ -6481,9 +6524,11 @@ async function compressContext(options = {}) {
     (m) => (m.role === 'user' || m.role === 'ai') && m.text && String(m.text).trim()
   );
   const speaker = (activeCharacter && activeCharacter.name) || '角色';
-  const segment = dialog
-    .map((m) => `${m.role === 'user' ? '用户' : speaker}：${m.text}`)
-    .join('\n');
+  // 压缩请求也会发给模型：图片路径同样换成别名
+  const segment = await aliasizeForModel(
+    dialog.map((m) => `${m.role === 'user' ? '用户' : speaker}：${m.text}`).join('\n'),
+    { bare: true, onlyPaths: sessionImagePaths() },
+  );
   if (!segment) {
     if (!auto) toast('没有可压缩的对话');
     return false;
@@ -11467,7 +11512,9 @@ async function runCoreTool(call, args) {
   if (call.name === 'read_image') {
     const filePath = String(args.path || args.file || '').trim();
     if (!filePath) return toolResult('Error: path is required', 'error');
-    if (!imagePathAllowed(filePath)) {
+    // 别名由程序分配，天然只指向本会话可见的图片，不再走路径白名单
+    const isAlias = /^\[?image_\d+\]?$/i.test(filePath);
+    if (!isAlias && !imagePathAllowed(filePath)) {
       return toolResult(
         '该图片不在本会话允许读取的范围内。请让用户在输入框里拖入这张图片（或直接输入它的完整路径），或在「设置 → Agent 运行」打开「图片读取权限」。',
         'error',
@@ -11486,10 +11533,11 @@ async function runCoreTool(call, args) {
       return toolResult(`Error: ${error}`, 'error');
     }
     const dims = r.width && r.height ? `${r.width}×${r.height}` : '未知尺寸';
+    const shownPath = isAlias ? filePath : r.path || '';
     consoleLog('图片', `读取 ${r.name}（${dims}，${Math.round((r.bytes || 0) / 1024)}KB）`);
     // 图片本体只放在信封上，不会写进 msg.toolCalls（避免 localStorage 被 base64 撑爆）
     const envelope = toolResult(`已读取图片：${r.name}（${dims}）。画面内容随下一条消息一起发给你。`, 'success', {
-      image: { path: r.path, name: r.name, width: r.width || 0, height: r.height || 0 },
+      image: { path: shownPath, name: r.name, width: r.width || 0, height: r.height || 0 },
     });
     envelope.imageDataUrl = r.dataUrl;
     return envelope;

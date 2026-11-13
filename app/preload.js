@@ -111,6 +111,8 @@ contextBridge.exposeInMainWorld('petApi', {
   imageProbe: (filePath) => ipcRenderer.invoke('image:probe', filePath),
   imageRead: (filePath) => ipcRenderer.invoke('image:read', filePath),
   imageSaveTemp: (payload) => ipcRenderer.invoke('image:save-temp', payload),
+  // 发送给模型前把图片路径换成虚拟别名（代码块里的不动）
+  imageAliasText: (text, options) => ipcRenderer.invoke('image:alias-text', text, options),
 
   // 应用配置（应用名 / 版本 / 角色 / 数据根）：主进程装配，渲染层不再直接读配置文件
   appConfig: () => ipcRenderer.invoke('app:config'),
