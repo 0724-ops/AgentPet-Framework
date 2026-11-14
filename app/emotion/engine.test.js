@@ -370,6 +370,88 @@ test('上限倍率：向下取整，只作用于自动值', () => {
   assert.strictEqual(E.proactiveQuota(s, T0, { cap: 7, capMultiplier: 2 }).cap, 7);
 });
 
+// ---------------------------------------------------------------- 生物钟
+
+test('生物钟：默认 06:00–22:00 是恒等映射', () => {
+  for (let h = 0; h < 24; h += 1) {
+    assert.ok(Math.abs(E.rhythmHour(h) - h) < 1e-9, `小时 ${h} 被偏移了`);
+  }
+  const r = E.normalizeRhythm();
+  assert.strictEqual(r.wake, 6);
+  assert.strictEqual(r.sleep, 22);
+  assert.strictEqual(r.wakeLen, 16);
+  assert.strictEqual(r.sleepLen, 8);
+});
+
+test('生物钟：默认分段与旧固定表一致', () => {
+  const segs = E.rhythmSegments();
+  assert.deepStrictEqual(segs.map((s) => s.start), [6, 9, 12, 14, 18, 22]);
+  assert.deepStrictEqual(segs.map((s) => s.end), [9, 12, 14, 18, 22, 6]);
+  assert.strictEqual(segs[5].sleep, true);
+  assert.strictEqual(segs[5].name, '深夜');
+});
+
+test('生物钟：晚睡晚起 09:00–01:00，分段与映射一起后移', () => {
+  const r = E.normalizeRhythm({ wake: 9, sleep: 1 });
+  const segs = E.rhythmSegments(r);
+  assert.deepStrictEqual(segs.map((s) => s.name), ['清晨', '上午', '中午', '下午', '晚上', '深夜']);
+  assert.deepStrictEqual(segs.map((s) => s.start), [9, 12, 15, 17, 21, 1]);
+  assert.deepStrictEqual(segs.map((s) => s.end), [12, 15, 17, 21, 1, 9]);
+  assert.ok(Math.abs(E.rhythmHour(9, r) - 6) < 1e-9, '起床对应标准清晨');
+  assert.ok(Math.abs(E.rhythmHour(1, r) - 22) < 1e-9, '入睡对应标准入夜');
+  assert.ok(Math.abs(E.rhythmHour(17, r) - 14) < 1e-9, '下午中段仍对齐');
+});
+
+test('生物钟：清醒时长夹在 8~20 小时', () => {
+  const short = E.normalizeRhythm({ wake: 20, sleep: 22 });
+  assert.strictEqual(short.wakeLen, 8);
+  assert.strictEqual(short.sleep, 4);
+  const long = E.normalizeRhythm({ wake: 0, sleep: 23 });
+  assert.strictEqual(long.wakeLen, 20);
+  assert.strictEqual(long.sleep, 20);
+});
+
+test('褪黑素：钟点目标支持小数插值', () => {
+  assert.strictEqual(E.melatoninTarget(22), 66);
+  assert.ok(Math.abs(E.melatoninTarget(22.5) - 72) < 1e-9, '实际 ' + E.melatoninTarget(22.5));
+});
+
+test('生物钟：tick 按映射后的钟点算褪黑素', () => {
+  const night = { wake: 9, sleep: 1 };
+  const late = fresh();
+  late.hormones.melatonin = 12;
+  late.updated = at(1, 0).toISOString();
+  E.tick(late, at(7, 0), night);
+
+  const normal = fresh();
+  normal.hormones.melatonin = 12;
+  normal.updated = at(1, 0).toISOString();
+  E.tick(normal, at(7, 0));
+
+  assert.ok(late.hormones.melatonin > 60, '9 点起床的人 7 点还在睡：' + late.hormones.melatonin);
+  assert.ok(normal.hormones.melatonin < 20, '默认作息 7 点该清醒：' + normal.hormones.melatonin);
+});
+
+test('生物钟：改作息后困意与褪黑素按新钟点重新起算', () => {
+  const s = fresh();
+  s.body.sleepiness = 94;
+  s.hormones.melatonin = 80;
+  // 18:00 起床 / 14:00 入睡：真实 23:56 落在清醒段，虚拟钟点约 10:45
+  E.rebaseRhythm(s, at(23, 56), { wake: 18, sleep: 14 });
+  assert.ok(s.body.sleepiness < 40, '应该回到白天水平，实际 ' + s.body.sleepiness);
+  assert.ok(s.hormones.melatonin < 20, '褪黑素应该落到低位，实际 ' + s.hormones.melatonin);
+
+  const n = fresh();
+  n.body.sleepiness = 10;
+  E.rebaseRhythm(n, at(2, 0), { wake: 6, sleep: 22 });
+  assert.ok(n.body.sleepiness > 70, '默认作息的凌晨该困，实际 ' + n.body.sleepiness);
+});
+
+test('生物钟：{phase} 仍按真实钟点', () => {
+  assert.strictEqual(E.phase(7), '清晨');
+  assert.strictEqual(E.phase(23), '半夜');
+});
+
 // ---------------------------------------------------------------- 汇总
 
 console.log('');

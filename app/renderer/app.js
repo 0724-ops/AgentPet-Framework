@@ -129,11 +129,12 @@ const settings = store.get('agentpet.settings', {
   proactiveCap: 'auto',
   // 自动上限的倍率：向下取整，例如 3 × 1.4 = 4；手动指定上限时不受它影响
   proactiveCapMultiplier: 1,
-  proactiveNightStart: '23:00',
-  proactiveNightEnd: '07:00',
   proactiveQuietMin: 5,
   proactiveFloor: true,
   proactiveIgnoreHours: 12,
+  // 生物钟：身体与褪黑素按这张表走；主动消息里的 {phase} 仍按真实钟点
+  wakeHour: 6,
+  sleepHour: 22,
 });
 // 老版本存下来的设置里没有 scalePivot，补一个默认值（0 = 缩放时脚底不动）
 if (typeof settings.scalePivot !== 'number') settings.scalePivot = 0;
@@ -235,18 +236,22 @@ if (settings.proactiveCap !== 'auto') {
 }
 if (!Number.isFinite(settings.proactiveCapMultiplier)) settings.proactiveCapMultiplier = 1;
 settings.proactiveCapMultiplier = Math.max(0.1, Math.min(3, settings.proactiveCapMultiplier));
-if (typeof settings.proactiveNightStart !== 'string' || !/^\d{1,2}:\d{2}$/.test(settings.proactiveNightStart)) {
-  settings.proactiveNightStart = '23:00';
-}
-if (typeof settings.proactiveNightEnd !== 'string' || !/^\d{1,2}:\d{2}$/.test(settings.proactiveNightEnd)) {
-  settings.proactiveNightEnd = '07:00';
-}
 if (!Number.isFinite(settings.proactiveQuietMin)) settings.proactiveQuietMin = 5;
 settings.proactiveQuietMin = Math.max(0, Math.min(120, Math.round(settings.proactiveQuietMin)));
 if (settings.proactiveFloor == null) settings.proactiveFloor = true;
 settings.proactiveFloor = !!settings.proactiveFloor;
 if (!Number.isFinite(settings.proactiveIgnoreHours)) settings.proactiveIgnoreHours = 12;
 settings.proactiveIgnoreHours = Math.max(1, Math.min(72, Math.round(settings.proactiveIgnoreHours)));
+// 生物钟：清醒 8~20 小时，越界的存值在这里拉回来
+if (!Number.isFinite(settings.wakeHour)) settings.wakeHour = 6;
+if (!Number.isFinite(settings.sleepHour)) settings.sleepHour = 22;
+{
+  const rhythm = E && E.normalizeRhythm({ wake: settings.wakeHour, sleep: settings.sleepHour });
+  if (rhythm) {
+    settings.wakeHour = rhythm.wake;
+    settings.sleepHour = rhythm.sleep;
+  }
+}
 // 一次性迁移：1.3.0 预览版把 webgpu 当默认值存进过 localStorage，这里统一改回 webgl；
 // 用户之后在设置页手动切到 WebGPU（实验性）后不会再被改回来。
 if (!store.get('agentpet.backendDefaultV2', false)) {
@@ -1769,6 +1774,11 @@ function emotionActiveId() {
   return (activeCharacter && activeCharacter.id) || '';
 }
 
+// 生物钟：身体与褪黑素按它换算钟点；{phase} 仍用真实时间
+function emotionRhythm() {
+  return { wake: settings.wakeHour, sleep: settings.sleepHour };
+}
+
 function emotionConfig() {
   return {
     checkSeconds: settings.proactiveCheckSeconds,
@@ -1776,8 +1786,8 @@ function emotionConfig() {
     cooldownMin: settings.proactiveCooldownMin,
     cap: settings.proactiveCap,
     capMultiplier: settings.proactiveCapMultiplier,
-    nightStart: settings.proactiveNightStart,
-    nightEnd: settings.proactiveNightEnd,
+    nightStart: fmtClock(settings.sleepHour),
+    nightEnd: fmtClock(settings.wakeHour),
     quietMin: settings.proactiveQuietMin,
     floor: settings.proactiveFloor,
     gapMin: 150,
@@ -1845,7 +1855,7 @@ async function loadEmotionState({ force = false } = {}) {
       const res = await petApi.loadEmotion({ id });
       if (!res || !res.ok) throw new Error((res && res.error) || '读取失败');
       const now = new Date();
-      const s = E.tick(res.state, now);
+      const s = E.tick(res.state, now, emotionRhythm());
       settleIgnoreDue(s, now);
       emotionRuntime.state = s;
       emotionRuntime.loadedFor = id;
@@ -1887,7 +1897,7 @@ async function emotionForTurn(opts) {
   const s = emotionRuntime.state;
   if (!s) return;
   const now = new Date();
-  E.tick(s, now);
+  E.tick(s, now, emotionRhythm());
   // [系统信息] 不是用户说的：不刷新 lastUserAt，否则「被忽略」永远判不出来
   if (!(opts && opts.systemEvent)) E.markUserMessage(s, now);
   settleIgnoreDue(s, now);
@@ -1905,7 +1915,7 @@ async function emotionFromMood(mood, visibleText) {
   const s = emotionRuntime.state;
   if (!s) return;
   const now = new Date();
-  E.tick(s, now);
+  E.tick(s, now, emotionRhythm());
   if (!tag) {
     emotionRuntime.lastMood = { raw: '', hits: [], at: now.toISOString(), missing: true };
     saveEmotionState(false);
@@ -1952,7 +1962,7 @@ function emotionTick() {
   if (!emotionActive() || !emotionRuntime.state) return;
   const now = new Date();
   const s = emotionRuntime.state;
-  E.tick(s, now);
+  E.tick(s, now, emotionRhythm());
   const ignored = settleIgnoreDue(s, now);
   // 自动唤醒关掉时只走时间和「被忽略」结算，不抽签、不主动开口
   if (!settings.emotionEnabled) {
@@ -2019,7 +2029,7 @@ async function resetEmotionState() {
     toast((res && res.error) || '重置失败', 'warn');
     return;
   }
-  emotionRuntime.state = E.tick(res.state, new Date());
+  emotionRuntime.state = E.tick(res.state, new Date(), emotionRhythm());
   emotionRuntime.loadedFor = id;
   emotionRuntime.lastRoll = null;
   emotionRuntime.lastMood = null;
@@ -2335,10 +2345,182 @@ function renderEmotionStatus() {
   `;
 }
 
+// ---------------------------------------------------------------- 生物钟卡片
+
+// 0~23.999 的钟点写成 06:00
+function fmtClock(hour) {
+  const total = ((Math.round(Number(hour) * 60) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+// 24 小时条上的夜间高亮：入睡可能晚于起床，会跨午夜
+function rhythmTrackBg(r) {
+  const a = (r.sleep / 24) * 100;
+  const b = (r.wake / 24) * 100;
+  const idle = 'rgba(255, 255, 255, 0.07)';
+  const deep = 'rgba(108, 192, 166, 0.45)';
+  if (a < b) {
+    return `linear-gradient(to right, ${idle} 0 ${a}%, ${deep} ${a}% ${b}%, ${idle} ${b}% 100%)`;
+  }
+  return `linear-gradient(to right, ${deep} 0 ${b}%, ${idle} ${b}% ${a}%, ${deep} ${a}% 100%)`;
+}
+
+// 分段条：五个清醒段 + 深夜；深夜跨午夜时拆成两截
+function rhythmStripHtml(r) {
+  return E.rhythmSegments(r)
+    .map((seg) => {
+      const cls = 'rhythm-seg' + (seg.sleep ? ' is-night' : '');
+      const left = (seg.start / 24) * 100;
+      const width = (seg.hours / 24) * 100;
+      const tip = ` title="${seg.name} ${fmtClock(seg.start)}–${fmtClock(seg.end)}"`;
+      if (seg.start + seg.hours <= 24) {
+        return `<span class="${cls}" style="left:${left}%;width:${width}%"${tip}>${seg.name}</span>`;
+      }
+      const head = ((24 - seg.start) / 24) * 100;
+      const tail = ((seg.start + seg.hours - 24) / 24) * 100;
+      return `<span class="${cls}" style="left:${left}%;width:${head}%"${tip}>${seg.name}</span>`
+        + `<span class="${cls}" style="left:0;width:${tail}%"${tip}>${seg.name}</span>`;
+    })
+    .join('');
+}
+
+function rhythmSummaryHtml(r) {
+  const spans = E.rhythmSegments(r)
+    .map((seg) => `${seg.name} ${fmtClock(seg.start)}–${fmtClock(seg.end)}`)
+    .join(' · ');
+  return `
+    <div class="rhythm-readout">起床 ${fmtClock(r.wake)} · 入睡 ${fmtClock(r.sleep)} · 清醒 ${r.wakeLen} 小时 / 睡眠 ${r.sleepLen} 小时</div>
+    <div class="rhythm-readout rhythm-readout--sub">${spans}</div>
+  `;
+}
+
+function rhythmCardHtml() {
+  const r = E.normalizeRhythm(emotionRhythm());
+  const thumb = (key, hour, label) =>
+    `<div class="rhythm-thumb" data-rhythm-thumb="${key}" role="slider" tabindex="0"`
+    + ` aria-label="${label}" aria-valuemin="0" aria-valuemax="23" aria-valuenow="${hour}"`
+    + ` style="left:${(hour / 24) * 100}%"></div>`;
+  return `
+    <section class="emotion-card emotion-rhythm-card">
+      <div class="emotion-card-head"><b>生物钟</b></div>
+      <div class="rhythm-range" data-rhythm-range>
+        <div class="rhythm-track" style="background:${rhythmTrackBg(r)}"></div>
+        ${thumb('wakeHour', r.wake, '起床时间')}
+        ${thumb('sleepHour', r.sleep, '入睡时间')}
+      </div>
+      <div class="rhythm-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      <div class="rhythm-strip" data-rhythm-strip>${rhythmStripHtml(r)}</div>
+      <div data-rhythm-readout>${rhythmSummaryHtml(r)}</div>
+    </section>
+  `;
+}
+
+// 拖滑块时只刷预览，不重绘整块（否则正在拖的滑块会被换掉）
+function updateRhythmPreview(root, key, raw) {
+  // 注意：normalizeRhythm 读的是 wake / sleep，不是 wakeHour / sleepHour
+  const next = { wake: settings.wakeHour, sleep: settings.sleepHour };
+  if (key === 'wakeHour') next.wake = Number(raw);
+  else next.sleep = Number(raw);
+  const r = E.normalizeRhythm(next);
+  settings.wakeHour = r.wake;
+  settings.sleepHour = r.sleep;
+  // 清醒时长被夹住时会反过来改另一个端点，圆点位置要同步
+  root.querySelectorAll('[data-rhythm-thumb]').forEach((el) => {
+    const hour = settings[el.dataset.rhythmThumb];
+    el.style.left = `${(hour / 24) * 100}%`;
+    el.setAttribute('aria-valuenow', String(hour));
+  });
+  const track = root.querySelector('.rhythm-track');
+  if (track) track.style.background = rhythmTrackBg(r);
+  const strip = root.querySelector('[data-rhythm-strip]');
+  if (strip) strip.innerHTML = rhythmStripHtml(r);
+  const readout = root.querySelector('[data-rhythm-readout]');
+  if (readout) readout.innerHTML = rhythmSummaryHtml(r);
+}
+
+// 圆点是自己画的 div，拖动交给 document：不依赖原生 range，也不怕指针移出卡片
+const rhythmDrag = { key: '', root: null, el: null };
+
+function rhythmHourAt(el, clientX) {
+  const rect = el.getBoundingClientRect();
+  const ratio = rect.width ? (clientX - rect.left) / rect.width : 0;
+  return Math.max(0, Math.min(23, Math.round(ratio * 24)));
+}
+
+// 点哪儿就拖离得近的那个端点
+function rhythmNearestKey(hour) {
+  const gap = (a, b) => {
+    const d = Math.abs(a - b) % 24;
+    return Math.min(d, 24 - d);
+  };
+  return gap(hour, settings.sleepHour) < gap(hour, settings.wakeHour) ? 'sleepHour' : 'wakeHour';
+}
+
+// 作息改完：困意 / 褪黑素立刻按新钟点的应有水平重算，再让设置页重绘
+function commitRhythm() {
+  if (E && emotionRuntime.state) {
+    E.rebaseRhythm(emotionRuntime.state, new Date(), emotionRhythm());
+    saveEmotionState(false);
+  }
+  void applyEmotionSettings();
+}
+
+function endRhythmDrag() {
+  const el = rhythmDrag.el;
+  if (!el) return;
+  el.classList.remove('is-dragging');
+  rhythmDrag.el = null;
+  rhythmDrag.root = null;
+  rhythmDrag.key = '';
+  commitRhythm();
+}
+
+// 拖动全部挂在 document 上：即使面板被重绘过也不会丢监听
+document.addEventListener('mousedown', (e) => {
+  const range = e.target && e.target.closest ? e.target.closest('[data-rhythm-range]') : null;
+  if (!range) return;
+  const root = range.closest('.emotion-rhythm-card');
+  if (!root) return;
+  e.preventDefault();
+  const hour = rhythmHourAt(range, e.clientX);
+  const thumb = e.target.closest('[data-rhythm-thumb]');
+  rhythmDrag.root = root;
+  rhythmDrag.el = range;
+  rhythmDrag.key = thumb ? thumb.dataset.rhythmThumb : rhythmNearestKey(hour);
+  range.classList.add('is-dragging');
+  updateRhythmPreview(root, rhythmDrag.key, hour);
+});
+
+// 键盘：左右箭头微调选中的圆点
+document.addEventListener('keydown', (e) => {
+  const thumb = e.target && e.target.closest ? e.target.closest('[data-rhythm-thumb]') : null;
+  if (!thumb) return;
+  const delta = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+  if (!delta) return;
+  const root = thumb.closest('.emotion-rhythm-card');
+  if (!root) return;
+  e.preventDefault();
+  const key = thumb.dataset.rhythmThumb;
+  updateRhythmPreview(root, key, settings[key] + delta);
+  if (E && emotionRuntime.state) {
+    E.rebaseRhythm(emotionRuntime.state, new Date(), emotionRhythm());
+    saveEmotionState(false);
+  }
+  store.set('agentpet.settings', settings);
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!rhythmDrag.el) return;
+  updateRhythmPreview(rhythmDrag.root, rhythmDrag.key, rhythmHourAt(rhythmDrag.el, e.clientX));
+});
+document.addEventListener('mouseup', () => {
+  if (rhythmDrag.el) endRhythmDrag();
+});
+
 // 选项页：主动消息的额度摘要 + 全部参数
 function renderEmotionParams() {
   const root = $('#emotion-params');
-  if (!root || emotionFocusBlocked(root)) return;
+  if (!root || rhythmDrag.el || emotionFocusBlocked(root)) return;
   const snap = emotionPanelData(root);
   if (!snap) return;
 
@@ -2376,7 +2558,7 @@ function renderEmotionParams() {
       <div class="emotion-kv"><span>本次抽签</span><b>${escapeHtml(rollText)}</b></div>
       ${cooldownLeft ? `<div class="emotion-kv"><span>冷却剩余</span><b>${cooldownLeft} 分钟</b></div>` : ''}
       ${quietLeft ? `<div class="emotion-kv"><span>安静期剩余</span><b>${quietLeft} 分钟</b></div>` : ''}
-      <div class="emotion-kv"><span>夜间静默</span><b>${snap.night ? '是' : '否'}（${escapeHtml(settings.proactiveNightStart)}-${escapeHtml(settings.proactiveNightEnd)}）</b></div>
+      <div class="emotion-kv"><span>夜间静默</span><b>${snap.night ? '是' : '否'}（入睡 ${escapeHtml(fmtClock(settings.sleepHour))} – 起床 ${escapeHtml(fmtClock(settings.wakeHour))}）</b></div>
       <div class="emotion-divider"></div>
       <div class="emotion-form">
         ${emotionNumberField('proactiveCheckSeconds', '抽签间隔', settings.proactiveCheckSeconds, 15, 600, 1, '秒')}
@@ -2387,15 +2569,15 @@ function renderEmotionParams() {
         ${emotionNumberField('proactiveQuietMin', '安静期', settings.proactiveQuietMin, 0, 120, 1, '分钟')}
         ${emotionNumberField('proactiveIgnoreHours', '无视判定', settings.proactiveIgnoreHours, 1, 72, 1, '小时')}
         <label class="emotion-field"><span>超时保底</span><input type="checkbox" data-em-setting="proactiveFloor"${settings.proactiveFloor ? ' checked' : ''} /></label>
-        <label class="emotion-field"><span>夜间开始</span><input type="time" data-em-setting="proactiveNightStart" value="${escapeHtml(settings.proactiveNightStart)}" /></label>
-        <label class="emotion-field"><span>夜间结束</span><input type="time" data-em-setting="proactiveNightEnd" value="${escapeHtml(settings.proactiveNightEnd)}" /></label>
       </div>
     </section>
+
+    ${rhythmCardHtml()}
 
     <div class="emotion-actions">
       <button class="btn-ghost-sm" data-em-action="reset">重置状态</button>
       <button class="btn-ghost-sm" data-em-action="rebuild">重建心情原型向量</button>
-      <button class="btn-ghost-sm" data-em-action="copy">复制状态 JSON</button>
+      <button class="btn-ghost-sm" data-em-action="rhythm-reset">重置生物钟</button>
       <span class="emotion-hint">${snap.error ? escapeHtml(snap.error) : '状态按角色隔离，改完参数即时生效'}</span>
     </div>
   `;
@@ -2411,10 +2593,6 @@ function applyEmotionSettingValue(key, raw) {
     settings.proactiveFloor = !!raw;
     return;
   }
-  if (key === 'proactiveNightStart' || key === 'proactiveNightEnd') {
-    settings[key] = /^\d{1,2}:\d{2}$/.test(String(raw)) ? raw : key === 'proactiveNightStart' ? '23:00' : '07:00';
-    return;
-  }
   const n = Number(raw);
   if (!Number.isFinite(n)) return;
   if (key === 'proactiveCheckSeconds') settings[key] = Math.max(15, Math.min(600, Math.round(n)));
@@ -2423,17 +2601,6 @@ function applyEmotionSettingValue(key, raw) {
   else if (key === 'proactiveCooldownMin') settings[key] = Math.max(0, Math.min(1440, Math.round(n)));
   else if (key === 'proactiveQuietMin') settings[key] = Math.max(0, Math.min(120, Math.round(n)));
   else if (key === 'proactiveIgnoreHours') settings[key] = Math.max(1, Math.min(72, Math.round(n)));
-}
-
-async function copyEmotionSnapshot() {
-  const text = JSON.stringify(emotionSnapshot(), null, 2);
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('情感状态 JSON 已复制', 'accent');
-  } catch (_) {
-    consoleLog('情感', text);
-    toast('复制失败，已输出到控制台', 'warn');
-  }
 }
 
 function initEmotionPanel() {
@@ -2475,8 +2642,12 @@ function bindEmotionEvents(root) {
     if (!t) return;
     const action = t.dataset.emAction;
     if (action === 'reset') void resetEmotionState();
+    else if (action === 'rhythm-reset') {
+      settings.wakeHour = 6;
+      settings.sleepHour = 22;
+      commitRhythm();
+    }
     else if (action === 'rebuild') void rebuildEmotionVectors();
-    else if (action === 'copy') void copyEmotionSnapshot();
   });
 }
 initEmotionPanel();

@@ -88,6 +88,18 @@ const MEL_CURVE = {
   22: 66, 23: 78,
 };
 
+// 生物钟：用户可调的「起床 / 入睡」，默认 06:00–22:00（等价于旧的固定表）
+const RHYTHM_DEFAULTS = { wake: 6, sleep: 22, minWake: 8, maxWake: 20 };
+// 清醒段按 3:3:2:4:4 切成五段，睡眠段整段算深夜
+const RHYTHM_SPLIT = [
+  { key: 'dawn', name: '清晨', ratio: 3 },
+  { key: 'morning', name: '上午', ratio: 3 },
+  { key: 'noon', name: '中午', ratio: 2 },
+  { key: 'afternoon', name: '下午', ratio: 4 },
+  { key: 'evening', name: '晚上', ratio: 4 },
+];
+const RHYTHM_SPLIT_SUM = 16;
+
 // 主动消息默认配置（面板可改，见设计 §9.2）
 const PROACTIVE_DEFAULTS = {
   checkSeconds: 60,     // 多长时间抽一次签
@@ -121,8 +133,10 @@ function nowDate(now) {
   return now instanceof Date ? now : new Date(now == null ? Date.now() : now);
 }
 
-function hoursOf(now) {
-  return nowDate(now).getHours();
+// 带小数的钟点：生物钟分段落在半点时也能对齐
+function clockHoursOf(now) {
+  const d = nowDate(now);
+  return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
 }
 
 // 昼夜节律：每个小时的身体偏移
@@ -136,12 +150,17 @@ function circadian(hour) {
   return { stamina: -12, sleepiness: 22, hunger: -2 };
 }
 
-// 褪黑素钟点目标值
+// 褪黑素钟点目标值：虚拟钟点可能是小数，按相邻整点线性插值
 function melatoninTarget(hour) {
-  return MEL_CURVE[hour % 24] == null ? 12 : MEL_CURVE[hour % 24];
+  const h = ((Number(hour) % 24) + 24) % 24;
+  const lo = Math.floor(h);
+  const hi = (lo + 1) % 24;
+  const a = MEL_CURVE[lo] == null ? 12 : MEL_CURVE[lo];
+  const c = MEL_CURVE[hi] == null ? 12 : MEL_CURVE[hi];
+  return a + (c - a) * (h - lo);
 }
 
-// 时段中文
+// 时段中文（永远按真实钟点，避免用户调了作息后文案说错）
 function phase(hour) {
   if (hour < 5) return '深夜';
   if (hour < 8) return '清晨';
@@ -150,6 +169,70 @@ function phase(hour) {
   if (hour < 18) return '下午';
   if (hour < 22) return '晚上';
   return '半夜';
+}
+
+// 入睡 / 起床归一化：清醒时长夹在 8~20 小时，越界就挪入睡时间
+function normalizeRhythm(rhythm) {
+  const src = rhythm || {};
+  const pick = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const wake = ((Math.round(pick(src.wake, RHYTHM_DEFAULTS.wake)) % 24) + 24) % 24;
+  let sleep = ((Math.round(pick(src.sleep, RHYTHM_DEFAULTS.sleep)) % 24) + 24) % 24;
+  let wakeLen = (sleep - wake + 24) % 24;
+  if (wakeLen < RHYTHM_DEFAULTS.minWake) wakeLen = RHYTHM_DEFAULTS.minWake;
+  if (wakeLen > RHYTHM_DEFAULTS.maxWake) wakeLen = RHYTHM_DEFAULTS.maxWake;
+  sleep = (wake + wakeLen) % 24;
+  return { wake, sleep, wakeLen, sleepLen: 24 - wakeLen };
+}
+
+// 真实钟点 → 标准钟点：清醒段拉成 06~22，睡眠段拉成 22~06。
+// 默认 06/22 时是恒等映射，行为和旧的固定表一致。
+function rhythmHour(hour, rhythm) {
+  const r = normalizeRhythm(rhythm);
+  const h = ((Number(hour) % 24) + 24) % 24;
+  const d = (h - r.wake + 24) % 24;
+  if (d < r.wakeLen) return 6 + (d / r.wakeLen) * 16;
+  // 睡眠段映射到 22~06，会越过 24 点，绕回来
+  return (22 + ((d - r.wakeLen) / r.sleepLen) * 8) % 24;
+}
+
+// 真实钟点下的分段：五个清醒段 + 一个整段深夜（跨午夜时 end < start）
+function rhythmSegments(rhythm) {
+  const r = normalizeRhythm(rhythm);
+  const out = [];
+  let cursor = r.wake;
+  for (const seg of RHYTHM_SPLIT) {
+    const len = (r.wakeLen * seg.ratio) / RHYTHM_SPLIT_SUM;
+    const start = cursor;
+    cursor = (cursor + len) % 24;
+    out.push({
+      key: seg.key,
+      name: seg.name,
+      start: round(start, 3),
+      end: round(cursor, 3),
+      hours: round(len, 3),
+      sleep: false,
+    });
+  }
+  out.push({
+    key: 'night',
+    name: '深夜',
+    start: round(r.sleep, 3),
+    end: round(r.wake, 3),
+    hours: round(r.sleepLen, 3),
+    sleep: true,
+  });
+  return out;
+}
+
+// 改了作息后，把「钟点直接驱动」的两项按此刻虚拟钟点应有的水平重新起算：
+// 褪黑素对齐目标值，困意回到该时段的静息水平。
+// 否则旧作息攒下的困意要几小时才化开，看起来像设置没生效。
+function rebaseRhythm(s, now, rhythm) {
+  if (!s || !s.body || !s.hormones) return s;
+  const virtual = rhythmHour(clockHoursOf(now), rhythm);
+  s.hormones.melatonin = clamp(melatoninTarget(virtual), 0, 100);
+  s.body.sleepiness = clamp(BODY_REST.sleepiness + (circadian(virtual).sleepiness || 0), 0, 100);
+  return s;
 }
 
 // ---------------------------------------------------------------- 默认状态
@@ -196,9 +279,9 @@ function minutesSince(updatedIso, now) {
   return Math.max(0, (nowDate(now).getTime() - t) / 60000);
 }
 
-function decayBody(s, mins, now) {
+function decayBody(s, mins, now, rhythm) {
   if (mins <= 0) return;
-  const circ = circadian(hoursOf(now));
+  const circ = circadian(rhythmHour(clockHoursOf(now), rhythm));
   const k = 0.5 ** (mins / 180);
   for (const key of Object.keys(BODY_REST)) {
     const rest = BODY_REST[key] + (circ[key] || 0);
@@ -207,7 +290,7 @@ function decayBody(s, mins, now) {
   }
 }
 
-function decayHormones(s, mins, now) {
+function decayHormones(s, mins, now, rhythm) {
   if (mins <= 0) return;
   const speed = 0.7 + Number(s.personality.resilience || 0) * 0.6;
   for (const key of Object.keys(HALF_LIFE)) {
@@ -221,8 +304,8 @@ function decayHormones(s, mins, now) {
     const rest = HORMONE_REST[key];
     s.hormones[key] += (rest - s.hormones[key]) * kHome;
   }
-  // 褪黑素不按半衰期，按钟点靠拢
-  const target = melatoninTarget(hoursOf(now));
+  // 褪黑素不按半衰期，按钟点靠拢（钟点走生物钟映射）
+  const target = melatoninTarget(rhythmHour(clockHoursOf(now), rhythm));
   const curMel = s.hormones.melatonin;
   s.hormones.melatonin = clamp(target + (curMel - target) * (0.5 ** (mins / 45)), 0, 100);
   // 困倦跟着褪黑素走一点
@@ -247,13 +330,14 @@ function decayFear(s, mins) {
   if (s.fear.v < FEAR_SHOW) s.fear = null;
 }
 
-// 主推进：按经过分钟数依次衰减，最后刷新 updated
-function tick(s, now) {
+// 主推进：按经过分钟数依次衰减，最后刷新 updated。
+// rhythm = { wake, sleep }（真实钟点），缺省 06/22 时与旧行为一致。
+function tick(s, now, rhythm) {
   const t = nowDate(now);
   const mins = minutesSince(s.updated, t);
-  decayBody(s, mins, t);
+  decayBody(s, mins, t, rhythm);
   decayFear(s, mins);
-  decayHormones(s, mins, t);
+  decayHormones(s, mins, t, rhythm);
   decayRelation(s, mins);
   s.updated = t.toISOString();
   return s;
@@ -822,9 +906,11 @@ const API = {
   // 常量
   BODY_REST, HORMONE_REST, HALF_LIFE, RELATION_REST,
   TALENTS, TALENT_DEFAULT, PERSONALITY_KEYS, PERSONALITY_DEFAULT,
-  EVENTS, FEAR_KINDS, FEAR_SHOW, PROACTIVE_DEFAULTS,
+  EVENTS, FEAR_KINDS, FEAR_SHOW, PROACTIVE_DEFAULTS, RHYTHM_DEFAULTS,
   // 工具
   clamp, round, phase, circadian, melatoninTarget, dateKey, isNight,
+  // 生物钟
+  normalizeRhythm, rhythmHour, rhythmSegments, rebaseRhythm,
   // 状态
   defaultState, tick, decayBody, decayHormones, decayRelation, decayFear,
   // 情绪
