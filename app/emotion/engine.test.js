@@ -285,6 +285,48 @@ test('markProactive：跨天清零', () => {
   assert.strictEqual(s.today.date, E.dateKey(T0));
 });
 
+// ---------------------------------------------------------------- 被忽略
+
+test('被忽略：没主动发过就不判定', () => {
+  const s = fresh();
+  assert.strictEqual(E.applyIgnoreIfDue(s, at(10, 0, 1), {}), null);
+  assert.strictEqual(s.events.length, 0);
+});
+
+test('被忽略：她开口后用户回过话，不判定', () => {
+  const s = fresh();
+  s.lastProactiveAt = at(9, 0, 1).toISOString();
+  E.markUserMessage(s, at(9, 10, 1));
+  assert.strictEqual(s.lastUserAt, at(9, 10, 1).toISOString());
+  assert.strictEqual(E.applyIgnoreIfDue(s, at(23, 0, 1), {}), null);
+});
+
+test('被忽略：超过 N 小时没人理，补记一次且只记一次', () => {
+  const s = fresh();
+  s.lastProactiveAt = at(9, 0, 1).toISOString(); // 昨天 09:00 主动开口，之后没人说话
+  const first = E.applyIgnoreIfDue(s, at(21, 0, 1), { ignoreHours: 12 });
+  assert.ok(first && first.hours === 12);
+  const last = s.events[s.events.length - 1];
+  assert.strictEqual(last.kind, 'ignore');
+  assert.strictEqual(last.src, 'time');
+  assert.strictEqual(E.applyIgnoreIfDue(s, at(22, 0, 1), { ignoreHours: 12 }), null, '同一条不该重复记');
+  assert.strictEqual(s.events.filter((e) => e.kind === 'ignore').length, 1);
+});
+
+test('被忽略：没到 N 小时不判定（软件关着也算，只看时间戳）', () => {
+  const s = fresh();
+  s.lastProactiveAt = at(9, 0, 1).toISOString();
+  assert.strictEqual(E.applyIgnoreIfDue(s, at(18, 0, 1), { ignoreHours: 12 }), null);
+  assert.ok(E.applyIgnoreIfDue(s, at(22, 0, 1), { ignoreHours: 12 }));
+});
+
+test('被忽略：旧档案没有 lastUserAt 也能结算', () => {
+  const s = fresh();
+  s.lastProactiveAt = at(9, 0, 1).toISOString();
+  s.lastUserAt = null;
+  assert.ok(E.applyIgnoreIfDue(s, at(11, 0, 2), { ignoreHours: 12 }));
+});
+
 // ---------------------------------------------------------------- 模板/展示
 
 test('模板填充：已知占位符替换，未知原样保留', () => {
@@ -313,6 +355,19 @@ test('influences：最多 4 条，永远有话说', () => {
   s.hormones.oxytocin = 90;
   const many = E.influences(s);
   assert.ok(many.length <= 4, '实际 ' + many.length);
+});
+
+// ---------------------------------------------------------------- 每日上限倍率
+
+test('上限倍率：向下取整，只作用于自动值', () => {
+  const s = fresh();
+  assert.strictEqual(E.proactiveQuota(s, T0, {}).cap, 3);
+  const q = E.proactiveQuota(s, T0, { capMultiplier: 1.4 });
+  assert.strictEqual(q.cap, 4);
+  assert.ok(q.why.includes('× 1.4'), q.why);
+  assert.strictEqual(E.proactiveQuota(s, T0, { capMultiplier: 2 }).cap, 6);
+  // 手动上限是绝对值，不再乘倍率
+  assert.strictEqual(E.proactiveQuota(s, T0, { cap: 7, capMultiplier: 2 }).cap, 7);
 });
 
 // ---------------------------------------------------------------- 汇总

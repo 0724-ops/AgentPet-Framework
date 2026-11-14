@@ -185,9 +185,7 @@ const PRESET_TIME_FILE = path.join(APP_DIR, 'preset-time.md');
 const PRESET_MEMORY_FILE = path.join(APP_DIR, 'preset-memory.md');
 // 上下文压缩用的提示词，同样落在磁盘上，用户想改直接改文件
 const PRESET_COMPRESS_FILE = path.join(APP_DIR, 'preset-compress.md');
-// 情感状态摘要的注入模板（贴最新一条用户消息前），预设页可编辑
-const PRESET_EMOTION_FILE = path.join(APP_DIR, 'preset-emotion.md');
-// 主动开口的指令模板：用户没人说话时按它拼一句，和情感注入模板分开维护
+// 主动开口的指令模板：用户没人说话时按它拼一句
 const PRESET_PROACTIVE_FILE = path.join(APP_DIR, 'preset-proactive.md');
 // 可插拔工具注册表：只登记真 Tool Call；SPEAK / MEM_MARK 属于底层协议，不走这里
 const TOOLS_CONFIG_FILE = path.join(APP_DIR, 'tools.config.json');
@@ -2990,9 +2988,6 @@ function registerIpc() {
   ipcMain.handle('preset:write-time', (_e, text) => timeIO.write(text));
   ipcMain.handle('preset:read-memory', () => memoryIO.read());
   ipcMain.handle('preset:write-memory', (_e, text) => memoryIO.write(text));
-  const emotionPresetIO = presetTextIO(PRESET_EMOTION_FILE);
-  ipcMain.handle('preset:read-emotion', () => emotionPresetIO.read());
-  ipcMain.handle('preset:write-emotion', (_e, text) => emotionPresetIO.write(text));
   const proactivePresetIO = presetTextIO(PRESET_PROACTIVE_FILE);
   ipcMain.handle('preset:read-proactive', () => proactivePresetIO.read());
   ipcMain.handle('preset:write-proactive', (_e, text) => proactivePresetIO.write(text));

@@ -125,10 +125,13 @@ const settings = store.get('agentpet.settings', {
   proactiveWeight: 1,
   proactiveCooldownMin: 90,
   proactiveCap: 'auto',
+  // 自动上限的倍率：向下取整，例如 3 × 1.4 = 4；手动指定上限时不受它影响
+  proactiveCapMultiplier: 1,
   proactiveNightStart: '23:00',
   proactiveNightEnd: '07:00',
   proactiveQuietMin: 5,
   proactiveFloor: true,
+  proactiveIgnoreHours: 12,
 });
 // 老版本存下来的设置里没有 scalePivot，补一个默认值（0 = 缩放时脚底不动）
 if (typeof settings.scalePivot !== 'number') settings.scalePivot = 0;
@@ -227,6 +230,8 @@ if (settings.proactiveCap !== 'auto') {
   const cap = Math.round(Number(settings.proactiveCap));
   settings.proactiveCap = Number.isFinite(cap) ? Math.max(1, Math.min(20, cap)) : 'auto';
 }
+if (!Number.isFinite(settings.proactiveCapMultiplier)) settings.proactiveCapMultiplier = 1;
+settings.proactiveCapMultiplier = Math.max(0.1, Math.min(3, settings.proactiveCapMultiplier));
 if (typeof settings.proactiveNightStart !== 'string' || !/^\d{1,2}:\d{2}$/.test(settings.proactiveNightStart)) {
   settings.proactiveNightStart = '23:00';
 }
@@ -237,6 +242,8 @@ if (!Number.isFinite(settings.proactiveQuietMin)) settings.proactiveQuietMin = 5
 settings.proactiveQuietMin = Math.max(0, Math.min(120, Math.round(settings.proactiveQuietMin)));
 if (settings.proactiveFloor == null) settings.proactiveFloor = true;
 settings.proactiveFloor = !!settings.proactiveFloor;
+if (!Number.isFinite(settings.proactiveIgnoreHours)) settings.proactiveIgnoreHours = 12;
+settings.proactiveIgnoreHours = Math.max(1, Math.min(72, Math.round(settings.proactiveIgnoreHours)));
 // 一次性迁移：1.3.0 预览版把 webgpu 当默认值存进过 localStorage，这里统一改回 webgl；
 // 用户之后在设置页手动切到 WebGPU（实验性）后不会再被改回来。
 if (!store.get('agentpet.backendDefaultV2', false)) {
@@ -499,7 +506,6 @@ const el = {
   presetSpeak: $('#preset-speak'),
   presetTime: $('#preset-time'),
   presetMemory: $('#preset-memory'),
-  presetEmotion: $('#preset-emotion'),
   presetProactive: $('#preset-proactive'),
   presetSpeakPath: $('#preset-speak-path'),
   presetTools: $('#preset-tools'),
@@ -1741,15 +1747,11 @@ const emotionRuntime = {
   state: null,          // 当前角色的情感状态（内存里的工作副本）
   loadedFor: '',        // 状态属于哪个角色 id
   loading: null,
-  template: '',         // preset-emotion.md：注入模板
   proactiveTemplate: '',// preset-proactive.md：主动开口模板
-  templateAt: 0,
   classifier: null,
   timer: null,
   lastUserAt: 0,        // 用户最后一次发言时间（安静期闸门）
   lastRoll: null,
-  ambiguous: null,      // 本轮模糊命中，等压缩结果兜底
-  editAxis: '',         // 底色雷达正在编辑的轴
   lastError: '',
   repaired: 0,
   note: '',
@@ -1769,11 +1771,13 @@ function emotionConfig() {
     weight: settings.proactiveWeight,
     cooldownMin: settings.proactiveCooldownMin,
     cap: settings.proactiveCap,
+    capMultiplier: settings.proactiveCapMultiplier,
     nightStart: settings.proactiveNightStart,
     nightEnd: settings.proactiveNightEnd,
     quietMin: settings.proactiveQuietMin,
     floor: settings.proactiveFloor,
     gapMin: 150,
+    ignoreHours: settings.proactiveIgnoreHours,
   };
 }
 
@@ -1803,20 +1807,15 @@ function warmEmotionClassifier() {
   cls
     .ready()
     .then((res) => {
-      if (res && res.ok) consoleLog('情感', `事件原型就绪（${res.count} 条${res.cached ? '，缓存命中' : ''}）`);
-      else if (res && res.error) consoleLog('警告', `事件原型准备失败：${res.error}`);
+      if (res && res.ok) consoleLog('情感', `心情原型就绪（${res.count} 条${res.cached ? '，缓存命中' : ''}）`);
+      else if (res && res.error) consoleLog('警告', `心情原型准备失败：${res.error}`);
     })
     .catch(() => {});
 }
 
 async function loadEmotionTemplates() {
-  const [a, b] = await Promise.all([
-    readPresetText('readPresetEmotion'),
-    readPresetText('readPresetProactive'),
-  ]);
-  emotionRuntime.template = a.text || '';
-  emotionRuntime.proactiveTemplate = b.text || '';
-  emotionRuntime.templateAt = Date.now();
+  const r = await readPresetText('readPresetProactive');
+  emotionRuntime.proactiveTemplate = r.text || '';
 }
 
 // 读取当前角色的情感档案；force=true 用于切角色 / 手动重载
@@ -1843,6 +1842,7 @@ async function loadEmotionState({ force = false } = {}) {
       if (!res || !res.ok) throw new Error((res && res.error) || '读取失败');
       const now = new Date();
       const s = E.tick(res.state, now);
+      settleIgnoreDue(s, now);
       emotionRuntime.state = s;
       emotionRuntime.loadedFor = id;
       emotionRuntime.repaired = Number(res.repaired) || 0;
@@ -1875,8 +1875,8 @@ function saveEmotionState(immediate = false) {
   });
 }
 
-// 每轮用户输入：推进衰减 → 识别事件 → 更新状态。任何一步失败都不影响对话。
-async function emotionForTurn(text) {
+// 用户说话：只推进衰减、记时间、结算「被忽略」；情绪不读用户的话
+async function emotionForTurn(opts) {
   emotionRuntime.lastUserAt = Date.now();
   if (!emotionActive()) return;
   if (!emotionRuntime.state) await loadEmotionState();
@@ -1884,39 +1884,53 @@ async function emotionForTurn(text) {
   if (!s) return;
   const now = new Date();
   E.tick(s, now);
+  // [系统信息] 不是用户说的：不刷新 lastUserAt，否则「被忽略」永远判不出来
+  if (!(opts && opts.systemEvent)) E.markUserMessage(s, now);
+  settleIgnoreDue(s, now);
+  saveEmotionState(false);
+  renderEmotionPanel();
+}
+
+// 她的自述情绪（<<<MOOD:...>>>）：只用来结算状态与统计，用完即丢。
+// 不扫正文、不读用户的话；没有 MOOD 就这一轮不结算。
+async function emotionFromMood(mood, visibleText) {
+  if (!emotionActive()) return;
+  const tag = String(mood || '').trim().slice(0, 60);
+  if (!tag) return;
+  const reply = String(visibleText || '').trim().slice(0, 200);
+  if (!emotionRuntime.state) await loadEmotionState();
+  const s = emotionRuntime.state;
+  if (!s) return;
+  const now = new Date();
+  E.tick(s, now);
+  let kinds = [];
   try {
     const status = await petApi.memoryStatus();
     if (status && status.modelReady) {
       const cls = emotionClassifier();
-      if (cls) {
-        const res = await cls.classify(text);
-        for (const hit of (res && res.hits) || []) {
-          E.applyEvent(s, hit.kind, hit.intensity, 'vector', new Date(), hit.sim);
-          consoleLog('情感', `识别到 ${hit.kind}（相似度 ${hit.sim}，强度 ${hit.intensity}）`);
-        }
-        if (res && res.ambiguous) {
-          emotionRuntime.ambiguous = res.ambiguous;
-          consoleLog('情感', `模糊命中 ${res.ambiguous.kind}（${res.ambiguous.sim}），等压缩兜底`);
-        } else {
-          emotionRuntime.ambiguous = null;
-        }
+      const res = cls ? await cls.classify(tag, { noCooldown: true }) : null;
+      const hits = (res && res.hits) || [];
+      if (hits.length) {
+        const hit = hits[0];
+        E.applyEvent(s, hit.kind, hit.intensity * 0.5, 'mood', now, hit.sim);
+        consoleLog('情感', `她自述的心情像 ${hit.kind}（相似度 ${hit.sim}，强度 ${(hit.intensity * 0.5).toFixed(2)}）`);
+        kinds = hits.map((h) => h.kind);
       }
     }
   } catch (err) {
     consoleLog('警告', `情感识别失败：${err && err.message ? err.message : err}`);
   }
+  E.noteReplyStats(s, reply || tag, kinds, E.feel(s).valence);
   saveEmotionState(false);
   renderEmotionPanel();
 }
 
-// 注入块：每轮现算，跟在记忆条目后面写进 system，不落进聊天记录
-function currentEmotionBlock() {
-  const s = emotionRuntime.state;
-  if (!emotionActive() || !s) return '';
-  const tpl = String(emotionRuntime.template || '').trim();
-  if (!tpl) return '';
-  const values = E.placeholders(s, new Date(), emotionConfig());
-  return E.fillTemplate(tpl, values).trim();
+// 主动开口后 N 小时没人理：补记一次「被忽略」。
+// 判定只看时间戳，软件没开也会在下次启动 tick 到「现在」时补上。
+function settleIgnoreDue(s, now) {
+  const hit = E.applyIgnoreIfDue(s, now, emotionConfig());
+  if (hit) consoleLog('情感', `主动消息 ${hit.hours} 小时没人回，记一次「被忽略」`);
+  return !!hit;
 }
 
 // 主动消息：到点抽签，抽中且通过全部闸门才开口
@@ -1925,8 +1939,11 @@ function emotionTick() {
   const now = new Date();
   const s = emotionRuntime.state;
   E.tick(s, now);
+  settleIgnoreDue(s, now);
   const res = E.rollProactive(s, now, emotionConfig(), {
-    lastUserAt: emotionRuntime.lastUserAt ? new Date(emotionRuntime.lastUserAt).toISOString() : '',
+    lastUserAt: emotionRuntime.lastUserAt
+      ? new Date(emotionRuntime.lastUserAt).toISOString()
+      : (s.lastUserAt || ''),
   });
   emotionRuntime.lastRoll = res;
   if (res.fired && !chatBusy && !autoCompressRunning) {
@@ -2070,8 +2087,7 @@ function emotionMeter(label, value, max, display) {
 }
 
 // 六维雷达：纯内联 SVG，无第三方依赖
-function emotionRadar(items, opts) {
-  const o = opts || {};
+function emotionRadar(items) {
   const cx = 100;
   const cy = 100;
   const R = 62;
@@ -2092,12 +2108,9 @@ function emotionRadar(items, opts) {
     .map((it, i) => {
       const [x1, y1] = point(i, 1);
       const [tx, ty] = point(i, 1.28);
-      const active = o.editable && emotionRuntime.editAxis === it.key ? ' active' : '';
-      const cls = `em-ax${o.editable ? ' clickable' : ''}${active}`;
-      const attr = o.editable ? ` data-em-axis="${escapeHtml(it.key)}"` : '';
       return (
         `<line x1="${cx}" y1="${cy}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" class="em-radar-axis" />` +
-        `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" class="${cls}"${attr}>${escapeHtml(it.name)}</text>`
+        `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" class="em-ax">${escapeHtml(it.name)}</text>`
       );
     })
     .join('');
@@ -2195,23 +2208,13 @@ function renderEmotionStatus() {
   const ph = snap.placeholders;
   const days = ph.daysTogether;
 
+  // 雷达只读：数值由她自己的表达慢慢统计出来，不参与公式，也不能手改
+  const traits = E.deriveTraits(snap.state.stats, snap.state.personality);
   const personalityItems = E.PERSONALITY_KEYS.map((key) => ({
     key,
     name: EMOTION_PERSONALITY_NAMES[key] || key,
-    value: Number(snap.state.personality[key]) || 0,
+    value: Number(traits[key]) || 0,
   }));
-  const editAxis = emotionRuntime.editAxis;
-  const personalityEdit =
-    editAxis && EMOTION_PERSONALITY_NAMES[editAxis]
-      ? (() => {
-          const pct = Math.round((Number(snap.state.personality[editAxis]) || 0) * 100);
-          return (
-            `<div class="emotion-axis-editor"><span>${escapeHtml(EMOTION_PERSONALITY_NAMES[editAxis])}</span>` +
-            `<input type="range" min="0" max="100" step="1" value="${pct}" data-em-personality="${escapeHtml(editAxis)}" />` +
-            `<b>${pct}</b></div>`
-          );
-        })()
-      : '<div class="emotion-hint">点雷达上的轴名可以调整这一维</div>';
 
   root.innerHTML = `
     <div class="emotion-grid">
@@ -2240,9 +2243,9 @@ function renderEmotionStatus() {
         </section>
 
         <section class="emotion-card">
-          <div class="emotion-card-head"><b>底色 · 性格</b></div>
-          ${emotionRadar(personalityItems, { editable: true })}
-          ${personalityEdit}
+          <div class="emotion-card-head"><b>情绪分析</b></div>
+          ${emotionRadar(personalityItems)}
+          <div class="emotion-hint">按她自述的心情慢慢统计，不能手改</div>
         </section>
       </div>
 
@@ -2319,7 +2322,9 @@ function renderEmotionParams() {
         ${emotionNumberField('proactiveWeight', '概率权重', settings.proactiveWeight, 0, 100, 0.1, '倍')}
         ${emotionNumberField('proactiveCooldownMin', '开口冷却', settings.proactiveCooldownMin, 0, 1440, 1, '分钟')}
         <label class="emotion-field"><span>每日上限</span><select data-em-setting="proactiveCap">${capOptions}</select></label>
+        ${emotionNumberField('proactiveCapMultiplier', '上限倍率', settings.proactiveCapMultiplier, 0.1, 3, 0.1, '倍')}
         ${emotionNumberField('proactiveQuietMin', '安静期', settings.proactiveQuietMin, 0, 120, 1, '分钟')}
+        ${emotionNumberField('proactiveIgnoreHours', '无视判定', settings.proactiveIgnoreHours, 1, 72, 1, '小时')}
         <label class="emotion-field"><span>超时保底</span><input type="checkbox" data-em-setting="proactiveFloor"${settings.proactiveFloor ? ' checked' : ''} /></label>
         <label class="emotion-field"><span>夜间开始</span><input type="time" data-em-setting="proactiveNightStart" value="${escapeHtml(settings.proactiveNightStart)}" /></label>
         <label class="emotion-field"><span>夜间结束</span><input type="time" data-em-setting="proactiveNightEnd" value="${escapeHtml(settings.proactiveNightEnd)}" /></label>
@@ -2328,7 +2333,7 @@ function renderEmotionParams() {
 
     <div class="emotion-actions">
       <button class="btn-ghost-sm" data-em-action="reset">重置状态</button>
-      <button class="btn-ghost-sm" data-em-action="rebuild">重建事件原型向量</button>
+      <button class="btn-ghost-sm" data-em-action="rebuild">重建心情原型向量</button>
       <button class="btn-ghost-sm" data-em-action="copy">复制状态 JSON</button>
       <span class="emotion-hint">${snap.error ? escapeHtml(snap.error) : '状态按角色隔离，改完参数即时生效'}</span>
     </div>
@@ -2353,8 +2358,10 @@ function applyEmotionSettingValue(key, raw) {
   if (!Number.isFinite(n)) return;
   if (key === 'proactiveCheckSeconds') settings[key] = Math.max(15, Math.min(600, Math.round(n)));
   else if (key === 'proactiveWeight') settings[key] = Math.max(0, Math.min(100, n));
+  else if (key === 'proactiveCapMultiplier') settings[key] = Math.round(Math.max(0.1, Math.min(3, n)) * 10) / 10;
   else if (key === 'proactiveCooldownMin') settings[key] = Math.max(0, Math.min(1440, Math.round(n)));
   else if (key === 'proactiveQuietMin') settings[key] = Math.max(0, Math.min(120, Math.round(n)));
+  else if (key === 'proactiveIgnoreHours') settings[key] = Math.max(1, Math.min(72, Math.round(n)));
 }
 
 async function copyEmotionSnapshot() {
@@ -2386,24 +2393,9 @@ function initEmotionPanel() {
 
 function bindEmotionEvents(root) {
   if (!root) return;
-  root.addEventListener('input', (e) => {
-    const t = e.target;
-    if (!t || !t.dataset || !t.dataset.emPersonality) return;
-    const s = emotionRuntime.state;
-    if (!s) return;
-    s.personality[t.dataset.emPersonality] = Math.max(0, Math.min(1, (Number(t.value) || 0) / 100));
-    const b = t.parentElement && t.parentElement.querySelector('b');
-    if (b) b.textContent = String(Math.round(Number(t.value) || 0));
-  });
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (!t || !t.dataset) return;
-    if (t.dataset.emPersonality) {
-      saveEmotionState(true);
-      if (t.blur) t.blur();
-      renderEmotionPanel();
-      return;
-    }
     const key = t.dataset.emSetting;
     if (!key) return;
     applyEmotionSettingValue(key, t.type === 'checkbox' ? t.checked : t.value);
@@ -2411,13 +2403,8 @@ function bindEmotionEvents(root) {
     void applyEmotionSettings();
   });
   root.addEventListener('click', (e) => {
-    const t = e.target && e.target.closest ? e.target.closest('[data-em-axis],[data-em-action]') : null;
+    const t = e.target && e.target.closest ? e.target.closest('[data-em-action]') : null;
     if (!t) return;
-    if (t.dataset.emAxis) {
-      emotionRuntime.editAxis = emotionRuntime.editAxis === t.dataset.emAxis ? '' : t.dataset.emAxis;
-      renderEmotionPanel();
-      return;
-    }
     const action = t.dataset.emAction;
     if (action === 'reset') void resetEmotionState();
     else if (action === 'rebuild') void rebuildEmotionVectors();
@@ -5011,16 +4998,12 @@ function buildChatMessages() {
   const summary = String(store.get('agentpet.compressSummary', '') || '');
   // 时间开关关掉时，连那句「怎么读时间戳」的说明也一起拿掉，保持提示词干净
   const withTime = promptTimeOn();
-  // 情感块和记忆条目一样，每轮组装请求时现算、写在 system 里，
-  // 不落进 si.chat，所以只影响当前这一轮，后续对话不会带着旧情绪。
-  const emotionBlock = currentEmotionBlock();
   const system = [
     charTemplate(getPersonaText()),
     withTime ? charTemplate(timeNoteMd) : '',
     charTemplate(speakFormatMd),
     summary ? `早前对话摘要：\n${summary}` : '',
     longMemoryContext.block,
-    emotionBlock,
     charTemplate(actionsBlock),
     toolsPromptBlock(),
   ]
@@ -5226,6 +5209,9 @@ async function runAgent() {
         } else if (msg.text) {
           pushShellChat(msg.text, msg.seq);
           autoReadReply(speakSourceOf(msg), { raw: msg.text, speak: msg.speakText });
+          // 情绪只看她自述的 MOOD，且这条标记不进上下文、用完即丢
+          const moods = (parsed && parsed.moods) || [];
+          void emotionFromMood(moods.length ? moods[moods.length - 1] : '', msg.text);
         }
         return;
       }
@@ -5421,6 +5407,8 @@ function mockIntent(text) {
 // 统一发送入口：聊天和控制台写入同一份会话
 async function sendMessage(text, refs) {
   markUserActivity('chat'); // 发消息也算「用户在操作」，待机判定要重新计时
+  // [系统信息] 是插件 / 主动消息写的，不是用户发言：情感那边不能刷新 lastUserAt
+  const systemEvent = /^\[系统信息\]/.test(String(text || '').trim());
   // 本会话出现过的图片路径：图片读取权限关闭时，read_image 只放行这些
   for (const hit of String(text || '').matchAll(IMAGE_PATH_REGEX)) addAllowedImagePath(hit[0].trim());
   mentionImagesAt = 0; // 新图片已入会话：让 @ 面板下次重新拉取最近图片
@@ -5437,8 +5425,8 @@ async function sendMessage(text, refs) {
   if (online) {
     // Step 3：先检索长期记忆（异步），再组装本轮请求
     await refreshLongMemory(text);
-    // 情感：推进状态 + 识别事件 + 防抖落盘（开关关闭时立即返回）
-    await emotionForTurn(text);
+    // 情感：推进衰减 + 结算「被忽略」（开关关闭时立即返回）
+    await emotionForTurn({ systemEvent });
     await runAgent();
     return;
   }
@@ -7477,18 +7465,6 @@ async function compressContext(options = {}) {
     return false;
   }
 
-  // 低置信度兜底：向量识别卡在模糊区时，用压缩模型给的 emotion 补一次
-  if (emotionActive() && emotionRuntime.ambiguous && result.emotion && E.EVENTS[result.emotion]) {
-    if (!emotionRuntime.state) await loadEmotionState();
-    if (emotionRuntime.state) {
-      E.applyEvent(emotionRuntime.state, result.emotion, 0.6, 'compress', new Date());
-      saveEmotionState(true);
-      consoleLog('情感', `压缩兜底补记 ${result.emotion}（模糊命中 ${emotionRuntime.ambiguous.kind}）`);
-      renderEmotionPanel();
-    }
-    emotionRuntime.ambiguous = null;
-  }
-
   const nextCutoffSeq = pending.reduce((max, m) => Math.max(max, ensureSeq(m)), cutoffSeq);
   store.set('agentpet.compressSummary', summary);
   store.set('agentpet.compressCutoffSeq', nextCutoffSeq);
@@ -9412,7 +9388,6 @@ let presetPersonaDirty = false;
 let presetSpeakDirty = false;
 let presetTimeDirty = false;
 let presetMemoryDirty = false;
-let presetEmotionDirty = false;
 let presetProactiveDirty = false;
 
 // 预设页 TOOLS 区块：只展示 tools.config.json 里启用的真工具（只读，开关在「工具管理」）。
@@ -9757,15 +9732,6 @@ async function loadPresetMemory() {
 }
 
 // 情感注入模板 / 主动开口模板：同样来自本地 md，改文件或本页编辑后保存都生效
-async function loadPresetEmotion() {
-  const r = await readPresetText('readPresetEmotion');
-  emotionRuntime.template = r.text || '';
-  if (!presetEmotionDirty && el.presetEmotion) {
-    el.presetEmotion.value = emotionRuntime.template;
-    lineNumbersFor(el.presetEmotion);
-  }
-}
-
 async function loadPresetProactive() {
   const r = await readPresetText('readPresetProactive');
   emotionRuntime.proactiveTemplate = r.text || '';
@@ -9780,7 +9746,6 @@ function renderPreset() {
   loadPresetSpeak();
   loadPresetTime();
   loadPresetMemory();
-  loadPresetEmotion();
   loadPresetProactive();
   renderPresetActions();
   renderPresetTools();
@@ -9791,7 +9756,6 @@ const presetInputs = [
   [el.presetSpeak, () => (presetSpeakDirty = true)],
   [el.presetTime, () => (presetTimeDirty = true)],
   [el.presetMemory, () => (presetMemoryDirty = true)],
-  [el.presetEmotion, () => (presetEmotionDirty = true)],
   [el.presetProactive, () => (presetProactiveDirty = true)],
 ];
 presetInputs.forEach(([node, markDirty]) => {
@@ -9812,7 +9776,6 @@ $('#btn-save-all').onclick = async () => {
   speakFormatMd = el.presetSpeak.value;
   timeNoteMd = el.presetTime.value;
   memoryTemplateMd = el.presetMemory.value;
-  if (el.presetEmotion) emotionRuntime.template = el.presetEmotion.value;
   if (el.presetProactive) emotionRuntime.proactiveTemplate = el.presetProactive.value;
   const jobs = [
     ['writePresetPersona', personaMd],
@@ -9820,7 +9783,6 @@ $('#btn-save-all').onclick = async () => {
     ['writePresetTime', timeNoteMd],
     ['writePresetMemory', memoryTemplateMd],
   ];
-  if (el.presetEmotion) jobs.push(['writePresetEmotion', emotionRuntime.template]);
   if (el.presetProactive) jobs.push(['writePresetProactive', emotionRuntime.proactiveTemplate]);
   let failed = '';
   for (const [fn, text] of jobs) {
@@ -9842,7 +9804,7 @@ $('#btn-save-all').onclick = async () => {
     consoleLog('错误', `提示词保存失败：${failed}`);
     return;
   }
-  toast('提示词已保存（PROMPT / PERSONA / TIME / MEMORY / ACTIONS）', 'accent');
+  toast('提示词已保存（PROMPT / PERSONA / TIME / MEMORY / PROACTIVE / ACTIONS）', 'accent');
   consoleLog('系统', '提示词已保存到 si/app/preset-*.md');
 };
 

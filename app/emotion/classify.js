@@ -1,8 +1,8 @@
 // ============================================================================
 //  事件识别：原型向量 kNN
 //
-//  给每类事件一组用户侧原型句（prototypes.json），首次使用时批量向量化并缓存
-//  到 emotion.vectors.json；之后每轮只 embed 一次用户输入，和原型算余弦取最高分。
+//  给每类事件一组原型句（prototypes.json），首次使用时批量向量化并缓存
+//  到 emotion.vectors.json；之后每次只 embed 一条文本（她自己的回复），和原型算余弦取最高分。
 //
 //  依赖全部由外部注入，本文件不直接碰 petApi / IPC：
 //    embed(texts)   → { vectors, dim, model }
@@ -13,7 +13,6 @@
 
 const DEFAULTS = {
   threshold: 0.62,     // 命中阈值
-  ambiguous: 0.50,     // 模糊区下界：低于阈值但高于它，交给压缩 LLM 兜底
   maxHits: 2,          // 一句话最多命中几类
   cooldownMs: 90000,   // 同类事件冷却，期间合并
   sceneGateSim: 0.80,  // 场景类事件高于这个相似度才免场景词校验
@@ -159,7 +158,7 @@ export function createEmotionClassifier(options = {}) {
       if (typeof data === 'function') data = await data();
       if (!data) data = await loadPrototypesFromAsset();
       const flat = flatten(data);
-      if (!flat.length) throw new Error('事件原型为空');
+      if (!flat.length) throw new Error('心情原型为空');
       const hash = fingerprint(JSON.stringify(flat));
       const modelName = await currentModel();
 
@@ -215,7 +214,9 @@ export function createEmotionClassifier(options = {}) {
   }
 
   // 单句识别：命中 0~2 类，返回的 intensity 已限制在 0.2~1.6
-  async function classify(text) {
+  // options.noCooldown：自述情绪每轮只来一条，不受 90s 同类冷却影响
+  async function classify(text, options = {}) {
+    const skipCooldown = !!options.noCooldown;
     const q = String(text || '').trim();
     if (!q) return { hits: [], top: null, reason: 'empty' };
     const info = await ready();
@@ -226,7 +227,7 @@ export function createEmotionClassifier(options = {}) {
       res = await opts.embed([q]);
     } catch (err) {
       const msg = String((err && err.message) || err);
-      opts.log('[emotion] 用户输入向量化失败', msg);
+      opts.log('[emotion] 文本向量化失败', msg);
       return { hits: [], top: null, error: msg };
     }
     const vec = (res && res.vectors && res.vectors[0]) || null;
@@ -254,22 +255,22 @@ export function createEmotionClassifier(options = {}) {
       if (hits.length >= cfg.maxHits) break;
       if (r.sim < cfg.threshold) break;
       if (!passSceneGate(r.kind, r.sim, q)) continue;
-      const rec = applied.get(r.kind);
-      if (rec && now - rec.at < cfg.cooldownMs) {
-        // 冷却内合并：只把记录强度抬到较大值，不再重复加激素
-        rec.intensity = Math.max(rec.intensity, intensityOf(r.sim));
-        continue;
+      if (!skipCooldown) {
+        const rec = applied.get(r.kind);
+        if (rec && now - rec.at < cfg.cooldownMs) {
+          // 冷却内合并：只把记录强度抬到较大值，不再重复加激素
+          rec.intensity = Math.max(rec.intensity, intensityOf(r.sim));
+          continue;
+        }
       }
       const hit = { kind: r.kind, sim: round(r.sim, 3), intensity: intensityOf(r.sim), text: r.text };
-      applied.set(r.kind, { at: now, intensity: hit.intensity });
+      if (!skipCooldown) applied.set(r.kind, { at: now, intensity: hit.intensity });
       hits.push(hit);
     }
 
-    const ambiguous = !hits.length && top && top.sim >= cfg.ambiguous && top.sim < cfg.threshold ? top : null;
     const result = {
       hits,
       top,
-      ambiguous,
       model,
       count: items.length,
       at: now,

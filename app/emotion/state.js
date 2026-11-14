@@ -4,7 +4,7 @@
 //  - 每个角色一份：<DataRoot>/characters/<id>/emotion.json
 //  - 读：缺字段按默认补齐、数值夹取、坏文件不抛错（当作新档案并备份）
 //  - 写：原子落盘 + 短防抖（每轮对话都会更新，没必要次次同步写）
-//  - 事件原型向量缓存：emotion.vectors.json，同一个目录
+//  - 心情原型向量缓存：emotion.vectors.json，同一个目录
 // ============================================================================
 
 'use strict';
@@ -134,6 +134,20 @@ function sanitize(raw, character) {
 
   s.lastProactiveAt = isIsoLike(raw.lastProactiveAt) ? raw.lastProactiveAt : null;
   s.lastCheckAt = isIsoLike(raw.lastCheckAt) ? raw.lastCheckAt : null;
+  s.lastUserAt = isIsoLike(raw.lastUserAt) ? raw.lastUserAt : null;
+  s.lastIgnoredProactiveAt = isIsoLike(raw.lastIgnoredProactiveAt) ? raw.lastIgnoredProactiveAt : null;
+
+  // 回复统计：只影响雷达展示
+  const stats = raw.stats && typeof raw.stats === 'object' ? raw.stats : {};
+  s.stats = {
+    replies: Math.round(engine.clamp(num(stats.replies, 0), 0, 1e7)),
+    intimate: Math.round(engine.clamp(num(stats.intimate, 0), 0, 1e7)),
+    cold: Math.round(engine.clamp(num(stats.cold, 0), 0, 1e7)),
+    questions: Math.round(engine.clamp(num(stats.questions, 0), 0, 1e7)),
+    tsundere: Math.round(engine.clamp(num(stats.tsundere, 0), 0, 1e7)),
+    valenceSum: engine.clamp(num(stats.valenceSum, 0), 0, 1e9),
+    valenceSqSum: engine.clamp(num(stats.valenceSqSum, 0), 0, 1e9),
+  };
 
   // 事件流水：只认需要的最小字段，滚动 40 条
   if (Array.isArray(raw.events)) {
@@ -257,7 +271,7 @@ function createEmotionStore({ dataRoot, log = () => {} } = {}) {
     }
   }
 
-  // 事件原型向量缓存
+  // 心情原型向量缓存
   function readVectors(id, character) {
     const file = vectorsFileFor(id, character);
     if (!file || !exists(file)) return null;

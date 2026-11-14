@@ -1,16 +1,17 @@
 // ============================================================================
 //  伪工具标记解析器（流式）
 //
-//  模型输出里允许出现两种伪工具标记：
+//  模型输出里允许出现三种伪工具标记：
 //    <<<SPEAK 台词>>>                 —— 台词：进聊天 + TTS
 //    <<<MEM_MARK wrong=M1,M2>>>       —— 记忆反馈：只结算，不给用户看/念
+//    <<<MOOD 心情词>>>                —— 她的自述情绪：只结算，不给用户看/念/进上下文
 //
 //  规则：
 //    1. 标记本身永远不会进入聊天正文，也不会进 TTS；
-//    2. SPEAK 里的文字按原顺序留在正文里，MEM_MARK 整段丢弃；
+//    2. SPEAK 里的文字按原顺序留在正文里，MEM_MARK / MOOD 整段丢弃；
 //    3. 结束标记是连续 2 个及以上的 '>'：模型经常把 >>> 写成 >>，两种都认；
 //    4. 流式解析：标记被任意 chunk 切碎也要能拼回来；末尾未闭合的标记按
-//       SPEAK 保留文字、MEM_MARK 丢弃、未知标记原样输出；
+//       SPEAK 保留文字、MEM_MARK / MOOD 丢弃、未知标记原样输出；
 //    5. 未知的 <<<FOO ...>>> 不当伪工具，原样当正文；但 `<<<台词>>>` 这种被
 //       模型漏掉 SPEAK 的写法按 SPEAK 处理，避免标记漏进聊天。
 // ============================================================================
@@ -39,7 +40,7 @@ export function parseMemMarks(body) {
 }
 
 function isMarkerName(name) {
-  return name === 'SPEAK' || name === 'MEM_MARK';
+  return name === 'SPEAK' || name === 'MEM_MARK' || name === 'MOOD';
 }
 
 // 把标记头拆成 { name, body }：body 保留原文，SPEAK 只去掉一个分隔空格。
@@ -72,12 +73,13 @@ function findClose(src, from, final) {
   return null;
 }
 
-export function createPseudoToolParser({ onText, onSpeak, onMemMark } = {}) {
+export function createPseudoToolParser({ onText, onSpeak, onMemMark, onMood } = {}) {
   let buf = '';
   let text = '';
   let speech = '';
   let swallowNewline = false;
   const marks = [];
+  const moods = [];
   const markers = [];
 
   function emit(chunk, kind) {
@@ -103,6 +105,16 @@ export function createPseudoToolParser({ onText, onSpeak, onMemMark } = {}) {
       // MEM_MARK 后面通常跟一个换行，剥掉，免得聊天框开头多一条空行
       swallowNewline = true;
       if (onMemMark) onMemMark(wrong, body);
+      return;
+    }
+    if (name === 'MOOD') {
+      // 只取心情词，进统计后即丢弃；不显示、不朗读、不进聊天记录
+      // 兼容 <<<MOOD 心情>>> 与 <<<MOOD:心情>>> 两种写法
+      const mood = body.replace(/^[\s:：]+/, '').trim();
+      mood && moods.push(mood);
+      markers.push({ name, text: mood, raw });
+      swallowNewline = true;
+      if (mood && onMood) onMood(mood);
     }
   }
 
@@ -154,14 +166,14 @@ export function createPseudoToolParser({ onText, onSpeak, onMemMark } = {}) {
       const close = findClose(buf, OPEN.length, final);
       if (!close) {
         if (!final) return;
-        // 流结束时还没闭合：SPEAK 保留台词，MEM_MARK 丢弃，未知标记原样
+        // 流结束时还没闭合：SPEAK 保留台词，MEM_MARK / MOOD 丢弃，未知标记原样
         const rest = buf;
         const { name, body } = splitInner(rest.slice(OPEN.length));
         if (name === 'SPEAK') {
           const line = body.replace(/^[ \t]/, '');
           handle('SPEAK', line, rest);
-        } else if (name === 'MEM_MARK') {
-          handle('MEM_MARK', body, rest);
+        } else if (name === 'MEM_MARK' || name === 'MOOD') {
+          handle(name, body, rest);
         } else {
           emit(rest, 'plain');
         }
@@ -186,7 +198,7 @@ export function createPseudoToolParser({ onText, onSpeak, onMemMark } = {}) {
     },
     flush() {
       pump(true);
-      return { text, speech, marks: [...marks], markers: [...markers] };
+      return { text, speech, marks: [...marks], moods: [...moods], markers: [...markers] };
     },
     get text() {
       return text;
@@ -197,11 +209,14 @@ export function createPseudoToolParser({ onText, onSpeak, onMemMark } = {}) {
     get marks() {
       return [...marks];
     },
+    get moods() {
+      return [...moods];
+    },
   };
 }
 
 // 非流式清洗：把一段已经存在的文本（例如旧版本存下来的聊天记录）按同样规则
-// 过一遍，返回 { text, speech, marks }。用于载入历史消息时补做剥离。
+// 过一遍，返回 { text, speech, marks, moods }。用于载入历史消息时补做剥离。
 // 旧版剥离器只认 >>>，所以历史文本里还可能出现「开口已被吞掉、只剩行尾 >>」
 // 的残片；这里顺手把行尾连续的 > 清掉（只用于历史清洗，不影响流式输出）。
 export function sanitizePseudoText(source) {

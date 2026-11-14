@@ -99,6 +99,8 @@ const PROACTIVE_DEFAULTS = {
   quietMin: 5,          // 距用户最后发言多少分钟内不主动
   floor: true,          // 超时保底
   gapMin: 150,          // 基线期望间隔（分钟）
+  capMultiplier: 1.0,   // 每日上限倍率（向下取整），只作用于自动上限
+  ignoreHours: 12,      // 主动开口后多久没人理，补记一次「被忽略」
 };
 
 // ---------------------------------------------------------------- 工具
@@ -171,6 +173,9 @@ function defaultState(now) {
     today: { date: dateKey(d), sent: 0 },
     lastProactiveAt: null,
     lastCheckAt: null,
+    lastUserAt: null,
+    lastIgnoredProactiveAt: null,
+    stats: blankReplyStats(),
     events: [],
   };
 }
@@ -479,6 +484,12 @@ function proactiveQuota(s, now, config, emo) {
     cap -= 1;
     why += '，但困了，减一条';
   }
+  const mult = clamp(cfg.capMultiplier, 0.1, 3);
+  if (mult !== 1) {
+    const base = cap;
+    cap = clamp(Math.floor(base * mult), 1, 20);
+    why += `（${base} × ${round(mult, 2)} 向下取整 = ${cap} 条）`;
+  }
   if (cfg.cap !== 'auto' && cfg.cap != null && cfg.cap !== '') {
     cap = clamp(cfg.cap, 1, 20);
     why = '今日上限已手动设为 ' + cap;
@@ -584,6 +595,82 @@ function markProactive(s, now, src) {
   return today.sent;
 }
 
+// 记录用户真的说了话（[系统信息] 那种不算）；ignore 判定要用它
+function markUserMessage(s, now) {
+  s.lastUserAt = nowDate(now).toISOString();
+}
+
+// 她主动开口后 N 小时没人理 → 补记一次 ignore。
+// 纯时间对比，软件关着也不影响：下次启动 tick 到「现在」时照样能结算。
+function applyIgnoreIfDue(s, now, config) {
+  const cfg = { ...PROACTIVE_DEFAULTS, ...(config || {}) };
+  const t = nowDate(now);
+  const pro = Date.parse(s.lastProactiveAt || '');
+  if (!Number.isFinite(pro)) return null;
+  const ignored = Date.parse(s.lastIgnoredProactiveAt || '');
+  if (Number.isFinite(ignored) && ignored >= pro) return null;
+  const said = Date.parse(s.lastUserAt || '');
+  if (Number.isFinite(said) && said > pro) return null;
+  const hours = clamp(Number(cfg.ignoreHours), 1, 72);
+  if (t.getTime() - pro < hours * 3600000) return null;
+  s.lastIgnoredProactiveAt = new Date(pro).toISOString();
+  applyEvent(s, 'ignore', 1, 'time', t);
+  return { hours, at: s.lastIgnoredProactiveAt };
+}
+
+// ---------------------------------------------------------------- 回复统计（只用来画雷达）
+
+// 平滑窗口：相当于 20 条回复的先验，越大越不容易被几句话带偏
+const TRAIT_SPAN = 20;
+
+function blankReplyStats() {
+  return {
+    replies: 0,
+    intimate: 0,
+    cold: 0,
+    questions: 0,
+    tsundere: 0,
+    valenceSum: 0,
+    valenceSqSum: 0,
+  };
+}
+
+// 她的这条回复：命中什么、有多问、有多嘴硬、当时心情如何，累计下来
+function noteReplyStats(s, reply, kinds, valence) {
+  const st = s.stats || (s.stats = blankReplyStats());
+  const text = String(reply || '');
+  st.replies = (Number(st.replies) || 0) + 1;
+  const v = clamp(valence, 0, 100);
+  st.valenceSum = (Number(st.valenceSum) || 0) + v;
+  st.valenceSqSum = (Number(st.valenceSqSum) || 0) + v * v;
+  const list = Array.isArray(kinds) ? kinds : [];
+  if (list.some((k) => INTIMATE_KINDS.has(k))) st.intimate += 1;
+  if (list.some((k) => COLD_KINDS.has(k) || k === 'scare')) st.cold += 1;
+  if (/[?？]/.test(text)) st.questions += 1;
+  if (/(哼|才不|才没|别管|不要你|谁要|讨厌)/.test(text)) st.tsundere += 1;
+  return st;
+}
+
+// 雷达六维：以角色当前底色为先验，被她的表达慢慢拉动；只用于展示，不回灌公式
+function deriveTraits(stats, personality) {
+  const st = stats || blankReplyStats();
+  const p = personality || PERSONALITY_DEFAULT;
+  const n = Number(st.replies) || 0;
+  const blend = (count, prior) => clamp((Number(prior) * TRAIT_SPAN + (Number(count) || 0)) / (TRAIT_SPAN + n), 0, 1);
+  const mean = n ? Number(st.valenceSum) / n : 50;
+  const sq = n ? Number(st.valenceSqSum) / n : 2500;
+  const sd = Math.sqrt(Math.max(0, sq - mean * mean));
+  const stable = 1 - clamp(sd / 45, 0, 1);
+  return {
+    warmth: blend(st.intimate, p.warmth),
+    sensitivity: blend(st.cold, p.sensitivity),
+    resilience: clamp((Number(p.resilience) * TRAIT_SPAN + stable * n) / (TRAIT_SPAN + n), 0, 1),
+    optimism: clamp((Number(p.optimism) * TRAIT_SPAN + (Number(st.valenceSum) || 0) / 100) / (TRAIT_SPAN + n), 0, 1),
+    openness: blend(st.questions, p.openness),
+    stubbornness: blend(st.tsundere, p.stubbornness),
+  };
+}
+
 // ---------------------------------------------------------------- 面板/注入
 
 // 把数字翻成人话：这一刻是谁在推谁
@@ -647,7 +734,7 @@ const HORMONE_WORDS = {
 const INTENSITY_BANDS = [1.2, 0.75, 0.35, 0.05];
 const INTENSITY_WORDS = ['很强烈', '挺明显', '不太明显', '淡淡的', '几乎察觉不到'];
 
-// 注入用的占位符（模板在 app/preset-emotion.md，由用户维护）
+// 主动开口模板的占位符（模板在 app/preset-proactive.md，由用户维护）
 function placeholders(s, now, config, opts) {
   const t = nowDate(now);
   const emo = feel(s);
@@ -746,6 +833,9 @@ const API = {
   applyEvent,
   // 主动
   proactiveQuota, baseGapMinutes, rollProactive, markProactive,
+  markUserMessage, applyIgnoreIfDue,
+  // 雷达
+  noteReplyStats, deriveTraits, TRAIT_SPAN,
   // 展示
   influences, placeholders, fillTemplate, daysTogether,
 };

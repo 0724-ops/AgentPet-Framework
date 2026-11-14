@@ -86,9 +86,6 @@ contextBridge.exposeInMainWorld('petApi', {
   readPresetMemory: () => ipcRenderer.invoke('preset:read-memory'),
   writePresetMemory: (text) => ipcRenderer.invoke('preset:write-memory', text),
   readPresetCompress: () => ipcRenderer.invoke('preset:read-compress'),
-  // 情感状态摘要的注入模板（贴最新一条用户消息前）
-  readPresetEmotion: () => ipcRenderer.invoke('preset:read-emotion'),
-  writePresetEmotion: (text) => ipcRenderer.invoke('preset:write-emotion', text),
   // 主动开口的指令模板（preset-proactive.md）
   readPresetProactive: () => ipcRenderer.invoke('preset:read-proactive'),
   writePresetProactive: (text) => ipcRenderer.invoke('preset:write-proactive', text),

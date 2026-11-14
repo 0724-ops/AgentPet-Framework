@@ -592,7 +592,7 @@
                   这里的内容全部来自本地 .md，程序不内置任何提示词；文件为空就整块不注入。
                   保存时人设写回当前角色目录的 <code>persona.md</code>，其余分别写回
                   <code>si/app/preset-speak.md</code>、<code>preset-time.md</code>、<code>preset-memory.md</code>、<code>preset-actions.md</code>、
-                  <code>preset-emotion.md</code>、<code>preset-proactive.md</code>。
+                  <code>preset-proactive.md</code>。
                   MEMORY 里用 <code>{{MEMORIES}}</code> 代表记忆条目列表；任意提示词里用 <code>{{char}}</code> 代表当前角色名。
                 </p>
               </div>
@@ -640,13 +640,6 @@
                   <textarea id="preset-memory" spellcheck="false"></textarea>
                 </div>
               </div>
-              <div class="preset-block" data-key="emotion">
-                <div class="preset-label"><span>EMOTION</span></div>
-                <div class="preset-input-wrapper">
-                  <div class="line-numbers" data-for="preset-emotion"></div>
-                  <textarea id="preset-emotion" spellcheck="false"></textarea>
-                </div>
-              </div>
               <div class="preset-block" data-key="proactive">
                 <div class="preset-label"><span>PROACTIVE</span></div>
                 <div class="preset-input-wrapper">
@@ -662,7 +655,7 @@
               </div>
               <div class="preset-actions-bar">
                 <span id="preset-speak-path">si/app/preset-speak.md</span>
-                <span>PROMPT / PERSONA / TIME / MEMORY 保存时写回各自的 md</span>
+                <span>PROMPT / PERSONA / TIME / MEMORY / PROACTIVE 保存时写回各自的 md</span>
               </div>
               <div class="preset-actions-bar">
                 <span id="preset-actions-path">si/app/preset-actions.md</span>
@@ -848,7 +841,7 @@
                   <h2>情绪</h2>
                   <p class="page-desc">
                     数值引擎在本机运行，状态按角色隔离保存在角色目录的 <code>emotion.json</code>。
-                    提示词模板在「预设」页编辑（EMOTION / PROACTIVE）；参数在「选项」页调节。
+                    情绪来自她回复末尾自述的 <code>&lt;&lt;&lt;MOOD:...&gt;&gt;&gt;</code>，不进聊天上下文；主动开口模板在「预设」页编辑，参数在「选项」页调节。
                   </p>
                 </div>
               </div>
