@@ -319,6 +319,11 @@ const startPage = (() => {
   const i = process.argv.indexOf('--page');
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : '';
 })();
+// --tab emotion：截图验证时直接落到「动态注入」的指定页签
+const startTab = (() => {
+  const i = process.argv.indexOf('--tab');
+  return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : '';
+})();
 const demoMode = process.argv.includes('--demo');
 
 let win = null;
@@ -498,6 +503,7 @@ function createWindow() {
 
   const params = new URLSearchParams();
   if (startPage) params.set('page', startPage);
+  if (startTab) params.set('tab', startTab);
   if (demoMode) params.set('demo', '1');
   const targetUrl = params.toString() ? `${RENDERER_URL}?${params.toString()}` : RENDERER_URL;
   win

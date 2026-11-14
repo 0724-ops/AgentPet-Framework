@@ -1909,7 +1909,7 @@ async function emotionForTurn(text) {
   renderEmotionPanel();
 }
 
-// 注入块：贴最新一条用户消息（时间戳之后、原话之前），不进 system
+// 注入块：每轮现算，跟在记忆条目后面写进 system，不落进聊天记录
 function currentEmotionBlock() {
   const s = emotionRuntime.state;
   if (!emotionActive() || !s) return '';
@@ -5014,12 +5014,16 @@ function buildChatMessages() {
   const summary = String(store.get('agentpet.compressSummary', '') || '');
   // 时间开关关掉时，连那句「怎么读时间戳」的说明也一起拿掉，保持提示词干净
   const withTime = promptTimeOn();
+  // 情感块和记忆条目一样，每轮组装请求时现算、写在 system 里，
+  // 不落进 si.chat，所以只影响当前这一轮，后续对话不会带着旧情绪。
+  const emotionBlock = currentEmotionBlock();
   const system = [
     charTemplate(getPersonaText()),
     withTime ? charTemplate(timeNoteMd) : '',
     charTemplate(speakFormatMd),
     summary ? `早前对话摘要：\n${summary}` : '',
     longMemoryContext.block,
+    emotionBlock,
     charTemplate(actionsBlock),
     toolsPromptBlock(),
   ]
@@ -5027,22 +5031,12 @@ function buildChatMessages() {
     .join('\n\n');
   // historyWindow 的语义是「最近 N 轮对话」；100 = MAX，发送压缩点之后全部
   const history = buildApiHistory(settings.historyWindow);
-  // 时钟与情感状态都只贴在最新一条用户消息上（buildApiHistory 返回的是新对象，改不到 si.chat）。
-  // 顺序：时间戳 → 情感块 → 原话；system 保持不动，保住 KV Cache 前缀。
-  const emotionBlock = currentEmotionBlock();
-  if (withTime || emotionBlock) {
+  // 时钟只贴在最新一条用户消息上（buildApiHistory 返回的是新对象，改不到 si.chat）。
+  if (withTime) {
     const stamp = timeStampForPrompt();
     for (let i = history.length - 1; i >= 0; i--) {
       if (history[i].role === 'user' && typeof history[i].content === 'string') {
-        const original = history[i].content;
-        if (emotionBlock) {
-          // 有情感块时占多行：时间戳 → 情感块 → 原话
-          const head = withTime ? `[${stamp}]\n${emotionBlock}\n` : `${emotionBlock}\n`;
-          history[i].content = `${head}${original}`;
-        } else if (withTime) {
-          // 没有情感块时保持原来的单行格式，避免行为漂移
-          history[i].content = `[${stamp}] ${original}`;
-        }
+        history[i].content = `[${stamp}] ${history[i].content}`;
         break;
       }
     }
@@ -13135,6 +13129,8 @@ async function bootstrap() {
     openPicker();
   } else if (bootPage) {
     openSettingsPage(bootPage);
+    // 截图验证入口：?page=injection&tab=emotion|options
+    if (bootPage === 'injection' && BOOT_PARAMS.get('tab')) setInjectTab(BOOT_PARAMS.get('tab'));
   }
 
   if (BOOT_PARAMS.get('demo') === '1' && bootPage === 'console') {

@@ -609,6 +609,44 @@ function influences(s) {
   return out.slice(0, 4);
 }
 
+// 注入模板不出现裸数字：数值按区间换成程度词
+const LEVEL_BANDS = [80, 60, 40, 20];
+function levelWord(value, words, bands) {
+  const cuts = bands || LEVEL_BANDS;
+  const n = Number(value);
+  const v = Number.isFinite(n) ? n : 0;
+  const idx = cuts.findIndex((cut) => v >= cut);
+  return words[idx === -1 ? words.length - 1 : idx];
+}
+
+const BODY_WORDS = {
+  stamina: ['体力充沛', '体力不错', '体力一般', '有点累', '很疲惫'],
+  sleepiness: ['困得厉害', '挺困', '有点困', '不太困', '很清醒'],
+  hunger: ['饿得难受', '挺饿', '有点饿', '不太饿', '不饿'],
+  health: ['状态很好', '身体还行', '状态一般', '有点虚', '不太舒服'],
+};
+
+const RELATION_WORDS = {
+  affection: ['很亲近', '挺亲近', '关系一般', '有点疏远', '很生疏'],
+  trust: ['完全信任', '挺信任', '还在观察', '有点防备', '很难信任'],
+  dependence: ['很依赖你', '有点依赖你', '不太依赖你', '挺独立的', '完全靠自己'],
+  security: ['很安心', '挺安心', '还算安稳', '有点忐忑', '很不安'],
+  rapport: ['很有默契', '挺有默契', '还在磨合', '经常对不上', '总是错开'],
+};
+
+const HORMONE_WORDS = {
+  adrenaline: ['紧绷', '很高', '偏高', '略高', '平稳'],
+  cortisol: ['压得慌', '很高', '偏高', '略高', '平稳'],
+  dopamine: ['很兴奋', '很高', '偏高', '一般', '偏低'],
+  oxytocin: ['很想黏人', '很高', '偏高', '一般', '偏低'],
+  serotonin: ['很满足', '很高', '偏高', '一般', '偏低'],
+  endorphin: ['很放松', '很高', '偏高', '一般', '偏低'],
+  melatonin: ['困意很重', '很高', '偏高', '一般', '偏低'],
+};
+
+const INTENSITY_BANDS = [1.2, 0.75, 0.35, 0.05];
+const INTENSITY_WORDS = ['很强烈', '明显', '有点', '淡淡的', '几乎没有'];
+
 // 注入用的占位符（模板在 app/preset-emotion.md，由用户维护）
 function placeholders(s, now, config, opts) {
   const t = nowDate(now);
@@ -620,31 +658,34 @@ function placeholders(s, now, config, opts) {
   const options = opts || {};
 
   const bodyLine = [
-    `体力 ${Math.round(b.stamina)}`,
-    `困倦 ${Math.round(b.sleepiness)}`,
-    `饥饿 ${Math.round(b.hunger)}`,
-    `健康 ${Math.round(b.health)}`,
+    levelWord(b.stamina, BODY_WORDS.stamina),
+    levelWord(b.sleepiness, BODY_WORDS.sleepiness),
+    levelWord(b.hunger, BODY_WORDS.hunger),
+    levelWord(b.health, BODY_WORDS.health),
   ].join('，');
 
   const relationLine = [
-    `亲近 ${Math.round(r.affection)}`,
-    `信任 ${Math.round(r.trust)}`,
-    `依赖 ${Math.round(r.dependence)}`,
-    `安心 ${Math.round(r.security)}`,
-    `默契 ${Math.round(r.rapport)}`,
+    levelWord(r.affection, RELATION_WORDS.affection),
+    levelWord(r.trust, RELATION_WORDS.trust),
+    levelWord(r.dependence, RELATION_WORDS.dependence),
+    levelWord(r.security, RELATION_WORDS.security),
+    levelWord(r.rapport, RELATION_WORDS.rapport),
   ].join('，');
 
   const hormoneLine = [
-    `肾上腺素 ${Math.round(s.hormones.adrenaline)}`,
-    `皮质醇 ${Math.round(s.hormones.cortisol)}`,
-    `多巴胺 ${Math.round(s.hormones.dopamine)}`,
-    `催产素 ${Math.round(s.hormones.oxytocin)}`,
-    `血清素 ${Math.round(s.hormones.serotonin)}`,
-    `内啡肽 ${Math.round(s.hormones.endorphin)}`,
-    `褪黑素 ${Math.round(s.hormones.melatonin)}`,
+    `肾上腺素 ${levelWord(s.hormones.adrenaline, HORMONE_WORDS.adrenaline)}`,
+    `皮质醇 ${levelWord(s.hormones.cortisol, HORMONE_WORDS.cortisol)}`,
+    `多巴胺 ${levelWord(s.hormones.dopamine, HORMONE_WORDS.dopamine)}`,
+    `催产素 ${levelWord(s.hormones.oxytocin, HORMONE_WORDS.oxytocin)}`,
+    `血清素 ${levelWord(s.hormones.serotonin, HORMONE_WORDS.serotonin)}`,
+    `内啡肽 ${levelWord(s.hormones.endorphin, HORMONE_WORDS.endorphin)}`,
+    `褪黑素 ${levelWord(s.hormones.melatonin, HORMONE_WORDS.melatonin)}`,
   ].join('，');
 
-  const fear = s.fear && s.fear.v >= FEAR_SHOW ? `${s.fear.why}（${Math.round(s.fear.v)}）` : '';
+  const fear =
+    s.fear && s.fear.v >= FEAR_SHOW
+      ? `${s.fear.why}（${levelWord(s.fear.v, ['吓坏了', '很怕', '挺怕', '有点怕', '还发毛'])}）`
+      : '';
 
   return {
     inner: emo.inner,
@@ -652,7 +693,8 @@ function placeholders(s, now, config, opts) {
     valence: emo.valence,
     arousal: emo.arousal,
     control: emo.control,
-    intensity: emo.intensity,
+    // 模板里只给程度词，不给 0.19 这种裸数字
+    intensity: levelWord(emo.intensity, INTENSITY_WORDS, INTENSITY_BANDS),
     body_line: bodyLine,
     relation_line: relationLine,
     hormone_line: hormoneLine,
