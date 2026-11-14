@@ -5,7 +5,7 @@
       "name": "play_action",
       "label": "执行动作",
       "icon": "command",
-      "enabled": false,
+      "enabled": true,
       "prompt": "把一个或多个动作加入 {{char}} 的动作队列并按顺序播放。循环动作会一直保持，直到被替换；seconds 可以给循环动作设置播放上限，到点自动回待机。执行动作是真实的表演，不要用台词描述“我挥了挥手”来代替调用。",
       "schema": {
         "type": "object",
@@ -50,7 +50,7 @@
       "name": "get_state",
       "label": "读取状态",
       "icon": "note",
-      "enabled": false,
+      "enabled": true,
       "prompt": "读取 {{char}} 此刻的实时状态：内核是否空闲、当前正在播的动作与进度、动作队列里还有什么、模型缩放/朝向、鼠标跟随等。想接话或决定要不要插动作前先读它。",
       "schema": {
         "type": "object",

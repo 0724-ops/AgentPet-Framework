@@ -2046,9 +2046,10 @@ const EMOTION_PERSONALITY_NAMES = {
   optimism: '乐观', openness: '开放', stubbornness: '倔强',
 };
 const EMOTION_BODY_NAMES = { stamina: '体力', sleepiness: '困倦', hunger: '饥饿', health: '健康' };
+// 面板给用户看的名字：用感受词，不暴露激素术语
 const EMOTION_HORMONE_NAMES = {
-  adrenaline: '肾上腺素', cortisol: '皮质醇', dopamine: '多巴胺', oxytocin: '催产素',
-  serotonin: '血清素', endorphin: '内啡肽', melatonin: '褪黑素',
+  adrenaline: '紧张', cortisol: '压力', dopamine: '快乐', oxytocin: '亲密',
+  serotonin: '满足', endorphin: '治愈', melatonin: '困意',
 };
 const EMOTION_RELATION_NAMES = {
   affection: '亲近', trust: '信任', dependence: '依赖', security: '安心', rapport: '默契',
@@ -2100,7 +2101,7 @@ function emotionRadar(items, opts) {
     })
     .join('');
   return (
-    `<div class="emotion-radar${o.disabled ? ' emotion-skill' : ''}">` +
+    `<div class="emotion-radar">` +
     `<svg viewBox="0 0 200 200" aria-hidden="true">${grid}${axes}<polygon points="${data}" class="em-radar-data" /></svg>` +
     `</div>`
   );
@@ -2198,12 +2199,6 @@ function renderEmotionStatus() {
     name: EMOTION_PERSONALITY_NAMES[key] || key,
     value: Number(snap.state.personality[key]) || 0,
   }));
-  const talentItems = E.TALENTS.map((key) => ({
-    key,
-    name: key,
-    value: (Number(snap.state.talents[key]) || 0) / 100,
-  }));
-
   const editAxis = emotionRuntime.editAxis;
   const personalityEdit =
     editAxis && EMOTION_PERSONALITY_NAMES[editAxis]
@@ -2257,7 +2252,7 @@ function renderEmotionStatus() {
 
       <div class="emotion-col">
         <section class="emotion-card">
-          <div class="emotion-card-head"><b>身体 · 激素</b></div>
+          <div class="emotion-card-head"><b>状态</b></div>
           ${Object.keys(EMOTION_BODY_NAMES).map((key) => emotionMeter(EMOTION_BODY_NAMES[key], snap.state.body[key], 100)).join('')}
           <div class="emotion-divider"></div>
           ${Object.keys(EMOTION_HORMONE_NAMES).map((key) => emotionMeter(EMOTION_HORMONE_NAMES[key], snap.state.hormones[key], 100)).join('')}
@@ -2266,11 +2261,6 @@ function renderEmotionStatus() {
         <section class="emotion-card">
           <div class="emotion-card-head"><b>关系 · 你和我</b></div>
           ${Object.keys(EMOTION_RELATION_NAMES).map((key) => emotionMeter(EMOTION_RELATION_NAMES[key], snap.state.relation[key], 100)).join('')}
-        </section>
-
-        <section class="emotion-card emotion-card--tight">
-          <div class="emotion-card-head"><b>技能 · 练了会变</b><span class="emotion-hint">暂无数据源</span></div>
-          ${emotionRadar(talentItems, { disabled: true })}
         </section>
       </div>
     </div>

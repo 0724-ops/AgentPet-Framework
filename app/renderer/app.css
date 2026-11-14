@@ -7082,11 +7082,6 @@ html[data-panel="actions"] #close-picker {
   font-weight: 600;
 }
 
-.emotion-skill {
-  opacity: 0.42;
-  filter: grayscale(1);
-}
-
 /* 实时状态 */
 .emotion-influences {
   list-style: none;

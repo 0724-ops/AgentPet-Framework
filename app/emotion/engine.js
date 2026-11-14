@@ -592,10 +592,10 @@ function influences(s) {
   const b = s.body;
   const r = s.relation;
   const out = [];
-  if (h.adrenaline >= 45) out.push(`肾上腺素 ${Math.round(h.adrenaline)}：心是提着的，说话会冲一点。`);
-  if (h.cortisol >= 40) out.push(`皮质醇 ${Math.round(h.cortisol)}：容易往坏处想，别在这时候说重话。`);
-  if (h.dopamine >= 60) out.push(`多巴胺 ${Math.round(h.dopamine)}：现在学东西快，也容易被逗笑。`);
-  if (h.oxytocin >= 60) out.push(`催产素 ${Math.round(h.oxytocin)}：特别想黏着你，会主动找你。`);
+  if (h.adrenaline >= 45) out.push(`紧张 ${Math.round(h.adrenaline)}：心是提着的，说话会冲一点。`);
+  if (h.cortisol >= 40) out.push(`压力 ${Math.round(h.cortisol)}：容易往坏处想，别在这时候说重话。`);
+  if (h.dopamine >= 60) out.push(`快乐 ${Math.round(h.dopamine)}：现在学东西快，也容易被逗笑。`);
+  if (h.oxytocin >= 60) out.push(`亲密 ${Math.round(h.oxytocin)}：特别想黏着你，会主动找你。`);
   if (b.sleepiness >= 60) out.push(`困到 ${Math.round(b.sleepiness)}：回话变慢、字变短，不是不高兴。`);
   if (b.hunger >= 60) out.push(`饿到 ${Math.round(b.hunger)}：一点小事就想发脾气。`);
   if (r.trust >= 85) out.push(`信任 ${Math.round(r.trust)}：你说的话我不去猜别的意思。`);
@@ -673,13 +673,13 @@ function placeholders(s, now, config, opts) {
   ].join('，');
 
   const hormoneLine = [
-    `肾上腺素 ${levelWord(s.hormones.adrenaline, HORMONE_WORDS.adrenaline)}`,
-    `皮质醇 ${levelWord(s.hormones.cortisol, HORMONE_WORDS.cortisol)}`,
-    `多巴胺 ${levelWord(s.hormones.dopamine, HORMONE_WORDS.dopamine)}`,
-    `催产素 ${levelWord(s.hormones.oxytocin, HORMONE_WORDS.oxytocin)}`,
-    `血清素 ${levelWord(s.hormones.serotonin, HORMONE_WORDS.serotonin)}`,
-    `内啡肽 ${levelWord(s.hormones.endorphin, HORMONE_WORDS.endorphin)}`,
-    `褪黑素 ${levelWord(s.hormones.melatonin, HORMONE_WORDS.melatonin)}`,
+    `紧张 ${levelWord(s.hormones.adrenaline, HORMONE_WORDS.adrenaline)}`,
+    `压力 ${levelWord(s.hormones.cortisol, HORMONE_WORDS.cortisol)}`,
+    `快乐 ${levelWord(s.hormones.dopamine, HORMONE_WORDS.dopamine)}`,
+    `亲密 ${levelWord(s.hormones.oxytocin, HORMONE_WORDS.oxytocin)}`,
+    `满足 ${levelWord(s.hormones.serotonin, HORMONE_WORDS.serotonin)}`,
+    `治愈 ${levelWord(s.hormones.endorphin, HORMONE_WORDS.endorphin)}`,
+    `困意 ${levelWord(s.hormones.melatonin, HORMONE_WORDS.melatonin)}`,
   ].join('，');
 
   const fear =
