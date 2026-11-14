@@ -645,7 +645,7 @@ const HORMONE_WORDS = {
 };
 
 const INTENSITY_BANDS = [1.2, 0.75, 0.35, 0.05];
-const INTENSITY_WORDS = ['很强烈', '明显', '有点', '淡淡的', '几乎没有'];
+const INTENSITY_WORDS = ['很强烈', '挺明显', '不太明显', '淡淡的', '几乎察觉不到'];
 
 // 注入用的占位符（模板在 app/preset-emotion.md，由用户维护）
 function placeholders(s, now, config, opts) {

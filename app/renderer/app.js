@@ -1939,7 +1939,8 @@ function emotionTick() {
       const prompt = E.fillTemplate(tpl, values).trim();
       E.markProactive(s, now);
       consoleLog('情感', `主动开口（p=${res.p}, 今日 ${res.quota.used + 1}/${res.quota.cap}）`);
-      queuePluginChat(prompt);
+      // 加 [系统信息] 前缀：聊天里折成一张「系统信息」小卡片，不把提示词当用户发言铺在对话里
+      queuePluginChat(`[系统信息] ${prompt}`);
     }
   }
   saveEmotionState(false);
@@ -2243,11 +2244,6 @@ function renderEmotionStatus() {
           ${emotionRadar(personalityItems, { editable: true })}
           ${personalityEdit}
         </section>
-
-        <section class="emotion-card emotion-card--tight">
-          <div class="emotion-card-head"><b>实时状态 · 是谁在推我</b></div>
-          <ul class="emotion-influences">${snap.influences.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
-        </section>
       </div>
 
       <div class="emotion-col">
@@ -2261,6 +2257,11 @@ function renderEmotionStatus() {
         <section class="emotion-card">
           <div class="emotion-card-head"><b>关系 · 你和我</b></div>
           ${Object.keys(EMOTION_RELATION_NAMES).map((key) => emotionMeter(EMOTION_RELATION_NAMES[key], snap.state.relation[key], 100)).join('')}
+        </section>
+
+        <section class="emotion-card emotion-card--tight">
+          <div class="emotion-card-head"><b>实时状态</b></div>
+          <ul class="emotion-influences">${snap.influences.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
         </section>
       </div>
     </div>
@@ -2289,6 +2290,11 @@ function renderEmotionParams() {
   const cooldownLeft = roll && roll.cooldownLeft ? Math.ceil(roll.cooldownLeft) : 0;
   const quietLeft = roll && roll.quietLeft ? Math.ceil(roll.quietLeft) : 0;
 
+  // 权重直接乘在每次抽签的概率上，折算成期望间隔 = 基线 / 权重，改了要立刻能看出来
+  const weight = Math.max(0, Number(settings.proactiveWeight) || 0);
+  const expectText = weight <= 0
+    ? '关闭（权重为 0）'
+    : `约 ${Math.max(1, Math.round((Number(snap.gapMin) || 0) / weight))} 分钟`;
   const capOptions = ['auto', 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]
     .map((v) => {
       const sel = String(settings.proactiveCap) === String(v) ? ' selected' : '';
@@ -2301,7 +2307,8 @@ function renderEmotionParams() {
       <div class="emotion-card-head"><b>主动找你 · 今日额度</b></div>
       <div class="emotion-kv"><span>还能发</span><b>${quota.left} / ${quota.cap}</b></div>
       <div class="emotion-sub">${escapeHtml(quota.why || '')}</div>
-      <div class="emotion-kv"><span>基线间隔</span><b>约 ${snap.gapMin} 分钟</b></div>
+      <div class="emotion-kv"><span>期望间隔</span><b>${expectText}</b></div>
+      <div class="emotion-sub">基线 ${snap.gapMin} 分钟 × 权重 ${weight}（不含冷却与每日上限）</div>
       <div class="emotion-kv"><span>本次抽签</span><b>${escapeHtml(rollText)}</b></div>
       ${cooldownLeft ? `<div class="emotion-kv"><span>冷却剩余</span><b>${cooldownLeft} 分钟</b></div>` : ''}
       ${quietLeft ? `<div class="emotion-kv"><span>安静期剩余</span><b>${quietLeft} 分钟</b></div>` : ''}
