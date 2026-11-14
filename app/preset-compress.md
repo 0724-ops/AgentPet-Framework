@@ -53,6 +53,12 @@
 
 **数量**：通常 5–20 条，信息量大就多写些，最多 30 条；同一件事不要拆成多条。
 
+## emotion（可选）
+
+如果这段对话里能看出对方明显的情绪事件，额外给一个 `emotion` 字段；判断不了就省略这个键，不要猜。
+可选值：`praise`（夸你）/ `miss`（想你）/ `tease`（逗你）/ `cold`（冷淡、别烦我）/ `worry`（担心你）/ `comfort`（安慰你）/ `goodnight`（道晚安）/ `proud`（为你骄傲）/ `hug`（抱抱、亲近）/ `scare`（被突然吓到）/ `horror`（看恐怖内容）/ `thunder`（打雷）/ `night_walk`（一个人走夜路）/ `late_night`（熬夜）/ `eat`（吃饭）/ `rest`（休息）。
+只填一个最贴近的；没有明显情绪事件时不要输出这个键。这个字段只用来给情感系统做低置信度兜底，不写进记忆。
+
 ## 输出格式（只输出这一个 JSON 对象，绝不要包含 ```json 这样的 Markdown 标记）
 
 {"summary":"...","facts":[{"subject":"user","relation":"preference","object":"咖啡","fact":"喜欢冰美式","polarity":"positive","truth":1.0,"source":"我喜欢喝冰美式"}]}

@@ -179,10 +179,10 @@
           <div class="settings-nav-item" data-page="agent">Agent 运行</div>
           <div class="settings-nav-item" data-page="model">模型</div>
           <div class="settings-nav-item" data-page="preset">预设</div>
+          <div class="settings-nav-item" data-page="injection">动态注入</div>
           <div class="settings-nav-item" data-page="tools">工具管理</div>
           <div class="settings-nav-item" data-page="plugins">插件</div>
           <div class="settings-nav-item" data-page="voice">语音</div>
-          <div class="settings-nav-item" data-page="memorydb">记忆库</div>
           <div class="settings-nav-item" data-page="memory">笔记</div>
           <div class="settings-nav-item" data-page="archive">归档</div>
           <div class="settings-nav-item" data-page="console">控制台</div>
@@ -591,7 +591,8 @@
                 <p class="page-desc">
                   这里的内容全部来自本地 .md，程序不内置任何提示词；文件为空就整块不注入。
                   保存时人设写回当前角色目录的 <code>persona.md</code>，其余分别写回
-                  <code>si/app/preset-speak.md</code>、<code>preset-time.md</code>、<code>preset-memory.md</code>、<code>preset-actions.md</code>。
+                  <code>si/app/preset-speak.md</code>、<code>preset-time.md</code>、<code>preset-memory.md</code>、<code>preset-actions.md</code>、
+                  <code>preset-emotion.md</code>、<code>preset-proactive.md</code>。
                   MEMORY 里用 <code>{{MEMORIES}}</code> 代表记忆条目列表；任意提示词里用 <code>{{char}}</code> 代表当前角色名。
                 </p>
               </div>
@@ -637,6 +638,20 @@
                 <div class="preset-input-wrapper">
                   <div class="line-numbers" data-for="preset-memory"></div>
                   <textarea id="preset-memory" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="preset-block" data-key="emotion">
+                <div class="preset-label"><span>EMOTION</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="line-numbers" data-for="preset-emotion"></div>
+                  <textarea id="preset-emotion" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div class="preset-block" data-key="proactive">
+                <div class="preset-label"><span>PROACTIVE</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="line-numbers" data-for="preset-proactive"></div>
+                  <textarea id="preset-proactive" spellcheck="false"></textarea>
                 </div>
               </div>
               <div class="preset-block" data-key="actions">
@@ -719,22 +734,29 @@
             </label>
           </div>
 
-          <!-- 记忆库：直接读 SQLite 长程记忆库 + 摘要归档 -->
-          <div class="settings-page" data-page="memorydb">
-            <div class="preset-head">
-              <div>
-                <h2>记忆库</h2>
-                <p class="page-desc">这里直接读取 SQLite 长程记忆库（写入与检索都在后台）。点卡片可以展开激活度、置信度和来源。</p>
-              </div>
-              <div class="mem-db-actions">
-                <button class="link-btn" id="btn-mem-refresh">刷新</button>
-                <button class="link-btn" id="btn-mem-dedupe">整理</button>
-              </div>
+          <!-- 动态注入：记忆 + 情感合并，顶部切换「记忆 / 情绪 / 选项」 -->
+          <div class="settings-page" data-page="injection">
+            <div class="inject-tabs">
+              <button class="inject-tab active" data-inject-tab="memory">记忆</button>
+              <button class="inject-tab" data-inject-tab="emotion">情绪</button>
+              <button class="inject-tab" data-inject-tab="options">选项</button>
             </div>
-            <div class="setting-row">
-              <div><b>启用长期记忆</b><span>关闭后每轮不再检索，也不会向提示词注入记忆（库里的条目保留）；开启时会按需下载向量模型</span></div>
-              <input type="checkbox" id="set-memory-enabled" />
-            </div>
+
+            <div class="inject-panel active" data-inject-panel="memory">
+              <div class="preset-head">
+                <div>
+                  <h2>记忆库</h2>
+                  <p class="page-desc">这里直接读取 SQLite 长程记忆库（写入与检索都在后台）。点卡片可以展开激活度、置信度和来源；参数在「选项」页调节。</p>
+                </div>
+                <div class="mem-db-actions">
+                  <button class="link-btn" id="btn-mem-refresh">刷新</button>
+                  <button class="link-btn" id="btn-mem-dedupe">整理</button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div><b>启用长期记忆</b><span>关闭后每轮不再检索，也不会向提示词注入记忆（库里的条目保留）；开启时会按需下载向量模型</span></div>
+                <input type="checkbox" id="set-memory-enabled" />
+              </div>
 
             <!-- Step 5：检索 / 结算参数，改动即时生效（下一轮检索与结算按新值走）；折叠收起，避免误触 -->
             <details class="mem-params" id="mem-params">
@@ -818,6 +840,39 @@
               <div id="mem-facts"></div>
             </div>
             <div class="mem-panel mem-tl" data-tab="archive" id="mem-archive" hidden></div>
+            </div><!-- /inject-panel memory -->
+
+            <div class="inject-panel" data-inject-panel="emotion" hidden>
+              <div class="preset-head">
+                <div>
+                  <h2>情绪</h2>
+                  <p class="page-desc">
+                    数值引擎在本机运行，状态按角色隔离保存在角色目录的 <code>emotion.json</code>。
+                    提示词模板在「预设」页编辑（EMOTION / PROACTIVE）；参数在「选项」页调节。
+                  </p>
+                </div>
+              </div>
+              <div id="emotion-root"></div>
+            </div>
+
+            <div class="inject-panel" data-inject-panel="options" hidden>
+              <div class="preset-head">
+                <div>
+                  <h2>选项</h2>
+                  <p class="page-desc">记忆检索与情感主动消息的参数都在这里，改完即时生效。</p>
+                </div>
+                <button class="btn-save" id="btn-emotion-save">应用</button>
+              </div>
+              <div id="inject-mem-options"></div>
+              <label class="setting-row" id="row-emotion-enable">
+                <div>
+                  <b>启用情感系统</b>
+                  <span>关闭时：不推进状态、不识别事件、不注入、不写盘，对话行为与现在完全一致。</span>
+                </div>
+                <input type="checkbox" id="set-emotion-enabled" />
+              </label>
+              <div id="emotion-params"></div>
+            </div>
           </div>
 
           <!-- 笔记（可选长期资料，不自动注入提示词） -->
@@ -1123,6 +1178,7 @@
     </div>
 
     <script src="./chip-icons.js"></script>
+    <script src="../emotion/engine.js"></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

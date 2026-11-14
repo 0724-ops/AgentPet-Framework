@@ -30,5 +30,7 @@ export function parseCompressResult(text) {
   return {
     summary: String((data && data.summary) || '').trim(),
     facts: Array.isArray(data && data.facts) ? data.facts : [],
+    // 可选：给情感系统做低置信度兜底，缺失时为空串
+    emotion: String((data && data.emotion) || '').trim(),
   };
 }

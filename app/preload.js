@@ -86,6 +86,20 @@ contextBridge.exposeInMainWorld('petApi', {
   readPresetMemory: () => ipcRenderer.invoke('preset:read-memory'),
   writePresetMemory: (text) => ipcRenderer.invoke('preset:write-memory', text),
   readPresetCompress: () => ipcRenderer.invoke('preset:read-compress'),
+  // 情感状态摘要的注入模板（贴最新一条用户消息前）
+  readPresetEmotion: () => ipcRenderer.invoke('preset:read-emotion'),
+  writePresetEmotion: (text) => ipcRenderer.invoke('preset:write-emotion', text),
+  // 主动开口的指令模板（preset-proactive.md）
+  readPresetProactive: () => ipcRenderer.invoke('preset:read-proactive'),
+  writePresetProactive: (text) => ipcRenderer.invoke('preset:write-proactive', text),
+  // 情感状态：每个角色目录一份 emotion.json
+  loadEmotion: (payload) => ipcRenderer.invoke('emotion:load', payload),
+  saveEmotion: (payload) => ipcRenderer.invoke('emotion:save', payload),
+  flushEmotion: (payload) => ipcRenderer.invoke('emotion:flush', payload),
+  resetEmotion: (payload) => ipcRenderer.invoke('emotion:reset', payload),
+  readEmotionVectors: (payload) => ipcRenderer.invoke('emotion:vectors-read', payload),
+  writeEmotionVectors: (payload) => ipcRenderer.invoke('emotion:vectors-write', payload),
+  readEmotionPrototypes: () => ipcRenderer.invoke('emotion:prototypes'),
   // 可插拔工具注册表：只含真 Tool Call（SPEAK / MEM_MARK 是底层协议，不在这里）
   readToolsConfig: () => ipcRenderer.invoke('preset:read-tools'),
   writeToolsConfig: (config) => ipcRenderer.invoke('preset:write-tools', config),

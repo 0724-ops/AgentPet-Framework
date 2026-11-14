@@ -101,6 +101,8 @@ const KEEP_AT_ROOT = new Set([
   'character.json',
   'persona.md',
   'session.json',
+  'emotion.json',
+  'emotion.vectors.json',
   'icon.png',
   'icon.jpg',
   'icon.jpeg',

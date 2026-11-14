@@ -6826,3 +6826,451 @@ html[data-panel="actions"] #close-picker {
   display: none;
 }
 
+/* ==========================================================================
+   动态注入（记忆 / 情绪 / 选项）：顶部页签
+   ========================================================================== */
+.inject-tabs {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 18px;
+}
+
+.inject-tab {
+  position: relative;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 7px 1px 11px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.18s;
+}
+
+.inject-tab:hover {
+  color: var(--text-main);
+}
+
+.inject-tab.active {
+  color: var(--accent);
+}
+
+.inject-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.inject-panel[hidden] {
+  display: none;
+}
+
+/* ==========================================================================
+   情感面板（设置 → 动态注入 → 情绪 / 选项）：三栏卡片 + 横向条 + 内联 SVG 雷达
+   ========================================================================== */
+.emotion-empty {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px dashed var(--panel-border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.emotion-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.emotion-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.emotion-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 小卡片：让两栏卡片大小错落，不再一排齐齐整整 */
+.emotion-card--tight {
+  padding: 12px;
+  gap: 6px;
+}
+
+.emotion-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.emotion-card-head .emotion-hint {
+  font-weight: 400;
+}
+
+.emotion-clock {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.emotion-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.emotion-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.emotion-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.emotion-tag {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(108, 192, 166, 0.12);
+  border: 1px solid rgba(108, 192, 166, 0.28);
+  color: var(--text-main);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.emotion-divider {
+  height: 1px;
+  background: var(--panel-border);
+  margin: 2px 0;
+}
+
+/* 横向条 */
+.emotion-meter {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+
+.emotion-meter-label {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emotion-meter-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.emotion-meter-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+.emotion-meter-value {
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+/* 雷达 */
+.emotion-radar {
+  display: flex;
+  justify-content: center;
+  padding: 2px 0 6px;
+}
+
+.emotion-radar svg {
+  width: 100%;
+  max-width: 230px;
+  height: auto;
+  overflow: visible;
+}
+
+.em-radar-grid {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+}
+
+.em-radar-axis {
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+}
+
+.em-radar-data {
+  fill: rgba(108, 192, 166, 0.28);
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.em-ax {
+  fill: var(--text-muted);
+  font-size: 9.5px;
+}
+
+.em-ax.clickable {
+  cursor: pointer;
+  transition: fill 0.2s;
+}
+
+.em-ax.clickable:hover {
+  fill: var(--text-main);
+}
+
+.em-ax.active {
+  fill: var(--accent);
+  font-weight: 600;
+}
+
+.emotion-axis-editor {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.emotion-axis-editor input[type="range"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.emotion-axis-editor b {
+  text-align: right;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.emotion-skill {
+  opacity: 0.42;
+  filter: grayscale(1);
+}
+
+/* 实时状态 */
+.emotion-influences {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-main);
+}
+
+.emotion-influences li {
+  padding-left: 12px;
+  position: relative;
+}
+
+.emotion-influences li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* 主动额度 */
+.emotion-kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.emotion-kv b {
+  color: var(--text-main);
+  font-weight: 500;
+  text-align: right;
+}
+
+.emotion-param-card {
+  margin-top: 14px;
+}
+
+.emotion-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.emotion-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.emotion-field > span {
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.emotion-field > em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.emotion-field-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.emotion-field-control > input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.emotion-field-control > em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.emotion-field input[type="number"],
+.emotion-field input[type="time"],
+.emotion-field select {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
+  border-radius: 7px;
+  padding: 5px 7px;
+  font-size: 11.5px;
+  outline: none;
+}
+
+.emotion-field input[type="number"]:focus,
+.emotion-field input[type="time"]:focus,
+.emotion-field select:focus {
+  border-color: rgba(108, 192, 166, 0.45);
+}
+
+/* 面板里的开关：沿用设置页的 daisyUI 风格 */
+.emotion-field input[type="checkbox"] {
+  align-self: flex-start;
+  margin-top: 2px;
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.emotion-field input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c8d0de;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.emotion-field input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.emotion-field input[type="checkbox"]:checked::before {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+/* 页脚按钮 */
+.emotion-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.emotion-actions .emotion-hint {
+  margin-left: auto;
+}
+
+/* 情绪页保持两栏错落：窗口默认 900px 仍是两栏，窄到 720 以下才塌成一栏 */
+@media (max-width: 720px) {
+  .emotion-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .emotion-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .emotion-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

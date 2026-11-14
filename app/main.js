@@ -82,6 +82,10 @@ function readJsonSafe(file) {
 // 角色宿：<DataRoot>/characters/*，返回的路径统一是 app 根相对路径
 const characterHost = createCharacterHost({ dataRoot: DATA_ROOT, log });
 
+// 情感状态：每个角色目录一份 emotion.json，读写都在主进程完成
+const { createEmotionStore } = require('./emotion/state');
+const emotionStore = createEmotionStore({ dataRoot: DATA_ROOT, log });
+
 // app 根相对路径 → 磁盘绝对路径。
 //   characters/...  → <DataRoot>/characters/...
 //   其余            → 程序根（语音 / 模型等共享组件在这边）
@@ -181,6 +185,10 @@ const PRESET_TIME_FILE = path.join(APP_DIR, 'preset-time.md');
 const PRESET_MEMORY_FILE = path.join(APP_DIR, 'preset-memory.md');
 // 上下文压缩用的提示词，同样落在磁盘上，用户想改直接改文件
 const PRESET_COMPRESS_FILE = path.join(APP_DIR, 'preset-compress.md');
+// 情感状态摘要的注入模板（贴最新一条用户消息前），预设页可编辑
+const PRESET_EMOTION_FILE = path.join(APP_DIR, 'preset-emotion.md');
+// 主动开口的指令模板：用户没人说话时按它拼一句，和情感注入模板分开维护
+const PRESET_PROACTIVE_FILE = path.join(APP_DIR, 'preset-proactive.md');
 // 可插拔工具注册表：只登记真 Tool Call；SPEAK / MEM_MARK 属于底层协议，不走这里
 const TOOLS_CONFIG_FILE = path.join(APP_DIR, 'tools.config.json');
 // 繁 → 简回落表（OpenCC t2s 单字 + 词组例外），用于兜底修正转写结果
@@ -2976,6 +2984,63 @@ function registerIpc() {
   ipcMain.handle('preset:write-time', (_e, text) => timeIO.write(text));
   ipcMain.handle('preset:read-memory', () => memoryIO.read());
   ipcMain.handle('preset:write-memory', (_e, text) => memoryIO.write(text));
+  const emotionPresetIO = presetTextIO(PRESET_EMOTION_FILE);
+  ipcMain.handle('preset:read-emotion', () => emotionPresetIO.read());
+  ipcMain.handle('preset:write-emotion', (_e, text) => emotionPresetIO.write(text));
+  const proactivePresetIO = presetTextIO(PRESET_PROACTIVE_FILE);
+  ipcMain.handle('preset:read-proactive', () => proactivePresetIO.read());
+  ipcMain.handle('preset:write-proactive', (_e, text) => proactivePresetIO.write(text));
+
+  // 情感状态：按角色目录隔离，读写走主进程；前端只拿 state 对象
+  function activeEmotionTarget(id) {
+    const wanted = String(id || '');
+    const character = wanted ? characterHost.getById(wanted) : (APP_CONFIG.active || null);
+    return {
+      id: (character && character.id) || wanted || ((APP_CONFIG.active && APP_CONFIG.active.id) || ''),
+      character,
+    };
+  }
+  ipcMain.handle('emotion:load', (_e, payload) => {
+    const target = activeEmotionTarget(payload && payload.id);
+    if (!target.id) return { ok: false, error: '没有可用角色' };
+    return { ...emotionStore.load(target.id, target.character), id: target.id };
+  });
+  ipcMain.handle('emotion:save', (_e, payload) => {
+    const p = payload || {};
+    const target = activeEmotionTarget(p.id);
+    if (!target.id) return { ok: false, error: '没有可用角色' };
+    return emotionStore.save(target.id, p.state, { immediate: !!p.immediate });
+  });
+  ipcMain.handle('emotion:flush', (_e, payload) => {
+    const target = activeEmotionTarget(payload && payload.id);
+    if (!target.id) return { ok: false, error: '没有可用角色' };
+    return emotionStore.flush(target.id);
+  });
+  ipcMain.handle('emotion:reset', (_e, payload) => {
+    const target = activeEmotionTarget(payload && payload.id);
+    if (!target.id) return { ok: false, error: '没有可用角色' };
+    return { ...emotionStore.reset(target.id, target.character), id: target.id };
+  });
+  ipcMain.handle('emotion:vectors-read', (_e, payload) => {
+    const target = activeEmotionTarget(payload && payload.id);
+    if (!target.id) return null;
+    return emotionStore.readVectors(target.id, target.character);
+  });
+  ipcMain.handle('emotion:vectors-write', (_e, payload) => {
+    const p = payload || {};
+    const target = activeEmotionTarget(p.id);
+    if (!target.id) return { ok: false, error: '没有可用角色' };
+    return { ...emotionStore.writeVectors(target.id, target.character, p.data), id: target.id };
+  });
+  // 原型句由主进程读盘：渲染进程是 file:// 页面，fetch 本地 json 会被拦
+  ipcMain.handle('emotion:prototypes', async () => {
+    try {
+      const text = await fs.promises.readFile(path.join(APP_DIR, 'emotion', 'prototypes.json'), 'utf8');
+      return { ok: true, data: JSON.parse(text) };
+    } catch (err) {
+      return { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+  });
 
   ipcMain.handle('preset:read-compress', async () => {
     try {
@@ -3260,6 +3325,11 @@ app.on('will-quit', () => {
   // 第二个实例没拿到单实例锁、在 ready 之前就退出了，此时还没注册过快捷键，
   // 直接调用 unregisterAll 会抛 "globalShortcut cannot be used before the app is ready"
   if (app.isReady()) globalShortcut.unregisterAll();
+  try {
+    emotionStore.flushAll();
+  } catch (err) {
+    log('[emotion] 退出前落盘失败', String((err && err.message) || err));
+  }
   if (memoryHost) memoryHost.close();
   if (pluginHost) pluginHost.stopAll();
   if (tray) {
