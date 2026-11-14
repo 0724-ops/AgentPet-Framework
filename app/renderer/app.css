@@ -6951,6 +6951,47 @@ html[data-panel="actions"] #close-picker {
   line-height: 1.6;
 }
 
+/* 简易 / 全量：默认简易，少一些进度条 */
+.emotion-view-toggle {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.emotion-view-toggle button {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.emotion-view-toggle button:hover {
+  color: var(--text-main);
+}
+
+.emotion-view-toggle button.is-active {
+  border-color: rgba(108, 192, 166, 0.45);
+  background: rgba(108, 192, 166, 0.14);
+  color: var(--text-main);
+}
+
+/* 本轮心情：原话用引文样式，和译文分开 */
+.emotion-mood-raw {
+  padding: 7px 10px;
+  border-left: 2px solid rgba(108, 192, 166, 0.5);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 8px 8px 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
 .emotion-tags {
   display: flex;
   flex-wrap: wrap;

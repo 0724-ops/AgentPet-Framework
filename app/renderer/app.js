@@ -118,8 +118,10 @@ const settings = store.get('agentpet.settings', {
   archiveOnSwitch: false,
   // 切换角色后是否按新角色的动作库重建 ACTIONS（默认关）
   rebuildActionsOnSwitch: false,
-  // 情感系统：默认关；关闭时不 tick、不识别、不注入，行为与旧版一致
+  // 自动唤醒：默认关；只控制长时间待机时是否主动开口，状态记录与统计始终运行
   emotionEnabled: false,
+  // 情绪页默认用简易版：少一些进度条，需要细节时切「全量」
+  emotionSimpleView: true,
   // 主动消息：动态概率 + 额度上限（设计 §9.2）
   proactiveCheckSeconds: 60,
   proactiveWeight: 1,
@@ -220,6 +222,7 @@ settings.visualOffInBackground = !!settings.visualOffInBackground;
 // 情感系统 + 主动消息：老版本没有这些键，补默认值并夹取范围
 if (settings.emotionEnabled == null) settings.emotionEnabled = false;
 settings.emotionEnabled = !!settings.emotionEnabled;
+settings.emotionSimpleView = settings.emotionSimpleView !== false;
 if (!Number.isFinite(settings.proactiveCheckSeconds)) settings.proactiveCheckSeconds = 60;
 settings.proactiveCheckSeconds = Math.max(15, Math.min(600, Math.round(settings.proactiveCheckSeconds)));
 if (!Number.isFinite(settings.proactiveWeight)) settings.proactiveWeight = 1;
@@ -1752,13 +1755,14 @@ const emotionRuntime = {
   timer: null,
   lastUserAt: 0,        // 用户最后一次发言时间（安静期闸门）
   lastRoll: null,
+  lastMood: null,       // 本轮 MOOD 原话与向量归类结果（只展示，不持久化）
   lastError: '',
   repaired: 0,
   note: '',
 };
 
 function emotionActive() {
-  return !!(settings.emotionEnabled && E);
+  return !!E;
 }
 
 function emotionActiveId() {
@@ -1800,7 +1804,7 @@ function emotionClassifier() {
   return emotionRuntime.classifier;
 }
 
-// 原型向量首建要 1~2 秒：开关打开后在后台预热，不阻塞第一轮对话
+// 原型向量首建要 1~2 秒：状态读进来后在后台预热，不阻塞第一轮对话
 function warmEmotionClassifier() {
   const cls = emotionClassifier();
   if (!cls) return;
@@ -1824,7 +1828,7 @@ async function loadEmotionState({ force = false } = {}) {
     stopEmotionTimer();
     emotionRuntime.state = null;
     emotionRuntime.loadedFor = '';
-    emotionRuntime.note = settings.emotionEnabled ? '情感引擎未加载' : '情感系统已关闭';
+    emotionRuntime.note = '情感引擎未加载';
     renderEmotionPanel();
     return;
   }
@@ -1892,24 +1896,33 @@ async function emotionForTurn(opts) {
 }
 
 // 她的自述情绪（<<<MOOD:...>>>）：只用来结算状态与统计，用完即丢。
-// 不扫正文、不读用户的话；没有 MOOD 就这一轮不结算。
+// 不扫正文、不读用户的话；没有 MOOD 就这一轮不结算，面板里留一条记录方便排查。
 async function emotionFromMood(mood, visibleText) {
   if (!emotionActive()) return;
   const tag = String(mood || '').trim().slice(0, 60);
-  if (!tag) return;
   const reply = String(visibleText || '').trim().slice(0, 200);
   if (!emotionRuntime.state) await loadEmotionState();
   const s = emotionRuntime.state;
   if (!s) return;
   const now = new Date();
   E.tick(s, now);
+  if (!tag) {
+    emotionRuntime.lastMood = { raw: '', hits: [], at: now.toISOString(), missing: true };
+    saveEmotionState(false);
+    renderEmotionPanel();
+    return;
+  }
   let kinds = [];
+  let hitsOut = [];
+  let modelReady = false;
   try {
     const status = await petApi.memoryStatus();
-    if (status && status.modelReady) {
+    modelReady = !!(status && status.modelReady);
+    if (modelReady) {
       const cls = emotionClassifier();
       const res = cls ? await cls.classify(tag, { noCooldown: true }) : null;
       const hits = (res && res.hits) || [];
+      hitsOut = hits.map((h) => ({ kind: h.kind, sim: h.sim, intensity: h.intensity }));
       if (hits.length) {
         const hit = hits[0];
         E.applyEvent(s, hit.kind, hit.intensity * 0.5, 'mood', now, hit.sim);
@@ -1920,6 +1933,7 @@ async function emotionFromMood(mood, visibleText) {
   } catch (err) {
     consoleLog('警告', `情感识别失败：${err && err.message ? err.message : err}`);
   }
+  emotionRuntime.lastMood = { raw: tag, hits: hitsOut, at: now.toISOString(), modelReady };
   E.noteReplyStats(s, reply || tag, kinds, E.feel(s).valence);
   saveEmotionState(false);
   renderEmotionPanel();
@@ -1939,7 +1953,13 @@ function emotionTick() {
   const now = new Date();
   const s = emotionRuntime.state;
   E.tick(s, now);
-  settleIgnoreDue(s, now);
+  const ignored = settleIgnoreDue(s, now);
+  // 自动唤醒关掉时只走时间和「被忽略」结算，不抽签、不主动开口
+  if (!settings.emotionEnabled) {
+    if (ignored) saveEmotionState(false);
+    renderEmotionPanel();
+    return;
+  }
   const res = E.rollProactive(s, now, emotionConfig(), {
     lastUserAt: emotionRuntime.lastUserAt
       ? new Date(emotionRuntime.lastUserAt).toISOString()
@@ -1978,16 +1998,13 @@ function stopEmotionTimer() {
   }
 }
 
-// 设置页改完立即生效
+// 设置页改完立即生效：开关只影响自动唤醒，状态与统计始终运行
 async function applyEmotionSettings() {
   store.set('agentpet.settings', settings);
-  if (!settings.emotionEnabled) {
-    stopEmotionTimer();
-    emotionRuntime.state = null;
-    emotionRuntime.loadedFor = '';
-    emotionRuntime.note = '情感系统已关闭';
-    renderEmotionPanel();
-    return;
+  if (settings.emotionEnabled) {
+    if (emotionRuntime.note === '自动唤醒已关闭，状态照常记录') emotionRuntime.note = '';
+  } else {
+    emotionRuntime.note = '自动唤醒已关闭，状态照常记录';
   }
   await loadEmotionState({ force: !emotionRuntime.state });
   startEmotionTimer();
@@ -2005,6 +2022,7 @@ async function resetEmotionState() {
   emotionRuntime.state = E.tick(res.state, new Date());
   emotionRuntime.loadedFor = id;
   emotionRuntime.lastRoll = null;
+  emotionRuntime.lastMood = null;
   emotionRuntime.note = '已恢复出厂';
   if (emotionRuntime.classifier) emotionRuntime.classifier.resetCooldowns();
   renderEmotionPanel();
@@ -2030,7 +2048,7 @@ function emotionSnapshot() {
   if (!emotionActive() || !s) {
     return {
       enabled: emotionActive(),
-      note: emotionRuntime.note || (emotionActive() ? '尚未加载' : '情感系统已关闭'),
+      note: emotionRuntime.note || (emotionActive() ? '尚未加载' : '情感引擎未加载'),
       error: emotionRuntime.lastError,
       classifier: emotionRuntime.classifier ? emotionRuntime.classifier.stats() : null,
     };
@@ -2072,6 +2090,13 @@ const EMOTION_HORMONE_NAMES = {
 const EMOTION_RELATION_NAMES = {
   affection: '亲近', trust: '信任', dependence: '依赖', security: '安心', rapport: '默契',
 };
+// 心情类别给用户看的名字
+const EMOTION_KIND_NAMES = {
+  praise: '开心', miss: '想念', tease: '傲娇', cold: '低落', worry: '担心',
+  comfort: '安心', goodnight: '晚安', proud: '得意', hug: '亲近', scare: '害怕',
+  horror: '受惊', thunder: '受惊', night_walk: '不安', late_night: '疲惫',
+  eat: '满足', rest: '累了',
+};
 const EMOTION_BLOCKED_TEXT = {
   quota: '今日额度用完', night: '夜间静默', cooldown: '冷却中', quiet: '刚聊完，不打扰',
 };
@@ -2083,6 +2108,28 @@ function emotionMeter(label, value, max, display) {
     `<div class="emotion-meter"><span class="emotion-meter-label">${escapeHtml(label)}</span>` +
     `<span class="emotion-meter-track"><i style="width:${pct.toFixed(1)}%"></i></span>` +
     `<b class="emotion-meter-value">${escapeHtml(text)}</b></div>`
+  );
+}
+
+// 本轮心情：她自述的原话 → 向量归类成了什么，只展示、不持久化
+function emotionMoodTrace() {
+  const m = emotionRuntime.lastMood;
+  if (!m) return `<div class="emotion-hint">还没有收到她的心情标记</div>`;
+  if (m.missing) return `<div class="emotion-hint">这一轮没有 MOOD，情绪未结算</div>`;
+  const hits = Array.isArray(m.hits) ? m.hits : [];
+  if (!hits.length) {
+    return (
+      `<div class="emotion-mood-raw">${escapeHtml(m.raw)}</div>` +
+      `<div class="emotion-hint">${m.modelReady === false ? '记忆模型未就绪，这轮没能归类' : '没有命中任何一类'}</div>`
+    );
+  }
+  const tags = hits
+    .map((h) => `<span class="emotion-tag">${escapeHtml(EMOTION_KIND_NAMES[h.kind] || h.kind)} · ${Number(h.sim || 0).toFixed(2)}</span>`)
+    .join('');
+  return (
+    `<div class="emotion-mood-raw">${escapeHtml(m.raw)}</div>` +
+    `<div class="emotion-tags">${tags}</div>` +
+    `<div class="emotion-hint">强度 ${Number(hits[0].intensity || 0).toFixed(2)} × 0.5，只推动状态，不写进对话</div>`
   );
 }
 
@@ -2143,8 +2190,10 @@ function setInjectTab(tab) {
   if (injectState.tab === 'memory') {
     renderMemoryDb();
   } else if (injectState.tab === 'emotion') {
+    if (!emotionRuntime.state && !emotionRuntime.loading) void loadEmotionState({ force: true });
     renderEmotionStatus();
   } else {
+    if (!emotionRuntime.state && !emotionRuntime.loading) void loadEmotionState({ force: true });
     renderMemoryParams();
     renderEmotionParams();
   }
@@ -2175,9 +2224,7 @@ function emotionFocusBlocked(root) {
 // 取快照；不可用时把占位提示写进目标容器
 function emotionPanelData(target) {
   if (!emotionActive()) {
-    const why = settings.emotionEnabled
-      ? '情感引擎未加载：app/emotion/engine.js 没有执行'
-      : '情感系统已关闭。在「选项」页打开开关后开始记录状态。';
+    const why = '情感引擎未加载：app/emotion/engine.js 没有执行';
     if (target) target.innerHTML = `<div class="emotion-empty">${escapeHtml(emotionRuntime.lastError || why)}</div>`;
     return null;
   }
@@ -2207,6 +2254,7 @@ function renderEmotionStatus() {
   const emo = snap.emotion;
   const ph = snap.placeholders;
   const days = ph.daysTogether;
+  const simple = settings.emotionSimpleView !== false;
 
   // 雷达只读：数值由她自己的表达慢慢统计出来，不参与公式，也不能手改
   const traits = E.deriveTraits(snap.state.stats, snap.state.personality);
@@ -2217,6 +2265,10 @@ function renderEmotionStatus() {
   }));
 
   root.innerHTML = `
+    <div class="emotion-view-toggle">
+      <button type="button" data-em-view="simple" class="${simple ? 'is-active' : ''}">简易</button>
+      <button type="button" data-em-view="full" class="${simple ? '' : 'is-active'}">全量</button>
+    </div>
     <div class="emotion-grid">
       <div class="emotion-col">
         <section class="emotion-card emotion-card--tight">
@@ -2237,9 +2289,10 @@ function renderEmotionStatus() {
           ${emotionMeter('愉悦', emo.valence, 100)}
           ${emotionMeter('唤醒', emo.arousal, 100)}
           ${emotionMeter('掌控', emo.control, 100)}
+          ${simple ? '' : `
           ${emotionMeter('话多', snap.outbound.verbosity, 2, `${snap.outbound.verbosity.toFixed(2)}×`)}
           ${emotionMeter('回速', snap.outbound.delay, 2, `${snap.outbound.delay.toFixed(2)}×`)}
-          ${emotionMeter('黏人', snap.outbound.cling, 2, `${snap.outbound.cling.toFixed(2)}×`)}
+          ${emotionMeter('黏人', snap.outbound.cling, 2, `${snap.outbound.cling.toFixed(2)}×`)}`}
         </section>
 
         <section class="emotion-card">
@@ -2247,13 +2300,19 @@ function renderEmotionStatus() {
           ${emotionRadar(personalityItems)}
           <div class="emotion-hint">按她自述的心情慢慢统计，不能手改</div>
         </section>
+
+        <section class="emotion-card emotion-card--tight">
+          <div class="emotion-card-head"><b>本轮心情</b></div>
+          ${emotionMoodTrace()}
+        </section>
       </div>
 
       <div class="emotion-col">
         <section class="emotion-card">
           <div class="emotion-card-head"><b>状态</b></div>
+          ${simple ? '' : `
           ${Object.keys(EMOTION_BODY_NAMES).map((key) => emotionMeter(EMOTION_BODY_NAMES[key], snap.state.body[key], 100)).join('')}
-          <div class="emotion-divider"></div>
+          <div class="emotion-divider"></div>`}
           ${Object.keys(EMOTION_HORMONE_NAMES).map((key) => emotionMeter(EMOTION_HORMONE_NAMES[key], snap.state.hormones[key], 100)).join('')}
         </section>
 
@@ -2265,6 +2324,7 @@ function renderEmotionStatus() {
         <section class="emotion-card emotion-card--tight">
           <div class="emotion-card-head"><b>实时状态</b></div>
           <ul class="emotion-influences">${snap.influences.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
+          <div class="emotion-hint">只影响她长时间待机时主动开口的语气，不写进普通对话</div>
         </section>
       </div>
     </div>
@@ -2301,13 +2361,14 @@ function renderEmotionParams() {
   const capOptions = ['auto', 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]
     .map((v) => {
       const sel = String(settings.proactiveCap) === String(v) ? ' selected' : '';
-      return `<option value="${v}"${sel}>${v === 'auto' ? '自动（按心情 1/3/5）' : `${v} 条`}</option>`;
+      return `<option value="${v}"${sel}>${v === 'auto' ? '自动（按心情 1/3/5 × 倍率）' : `${v} 条`}</option>`;
     })
     .join('');
 
   root.innerHTML = `
     <section class="emotion-card emotion-param-card">
       <div class="emotion-card-head"><b>主动找你 · 今日额度</b></div>
+      ${settings.emotionEnabled ? '' : '<div class="emotion-sub">自动唤醒已关闭，下面的额度不会触发；状态统计与面板照常。</div>'}
       <div class="emotion-kv"><span>还能发</span><b>${quota.left} / ${quota.cap}</b></div>
       <div class="emotion-sub">${escapeHtml(quota.why || '')}</div>
       <div class="emotion-kv"><span>期望间隔</span><b>${expectText}</b></div>
@@ -2403,6 +2464,13 @@ function bindEmotionEvents(root) {
     void applyEmotionSettings();
   });
   root.addEventListener('click', (e) => {
+    const view = e.target && e.target.closest ? e.target.closest('[data-em-view]') : null;
+    if (view) {
+      settings.emotionSimpleView = view.dataset.emView !== 'full';
+      store.set('agentpet.settings', settings);
+      renderEmotionPanel();
+      return;
+    }
     const t = e.target && e.target.closest ? e.target.closest('[data-em-action]') : null;
     if (!t) return;
     const action = t.dataset.emAction;
@@ -8108,6 +8176,7 @@ async function onCharacterCard(ch) {
     emotionRuntime.loadedFor = '';
     emotionRuntime.state = null;
     emotionRuntime.lastRoll = null;
+    emotionRuntime.lastMood = null;
     if (emotionRuntime.classifier) emotionRuntime.classifier.resetCooldowns();
     await loadEmotionState({ force: true });
     // fetchActions(true) 内部会先刷新 actions.json 的中文名与分类

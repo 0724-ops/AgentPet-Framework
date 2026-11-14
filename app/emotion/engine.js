@@ -679,18 +679,18 @@ function influences(s) {
   const b = s.body;
   const r = s.relation;
   const out = [];
-  if (h.adrenaline >= 45) out.push(`紧张 ${Math.round(h.adrenaline)}：心是提着的，说话会冲一点。`);
-  if (h.cortisol >= 40) out.push(`压力 ${Math.round(h.cortisol)}：容易往坏处想，别在这时候说重话。`);
-  if (h.dopamine >= 60) out.push(`快乐 ${Math.round(h.dopamine)}：现在学东西快，也容易被逗笑。`);
-  if (h.oxytocin >= 60) out.push(`亲密 ${Math.round(h.oxytocin)}：特别想黏着你，会主动找你。`);
-  if (b.sleepiness >= 60) out.push(`困到 ${Math.round(b.sleepiness)}：回话变慢、字变短，不是不高兴。`);
-  if (b.hunger >= 60) out.push(`饿到 ${Math.round(b.hunger)}：一点小事就想发脾气。`);
-  if (r.trust >= 85) out.push(`信任 ${Math.round(r.trust)}：你说的话我不去猜别的意思。`);
-  if (r.security <= 55) out.push(`安全感只有 ${Math.round(r.security)}：会翻旧账，会问你在不在。`);
+  if (h.adrenaline >= 45) out.push(`紧张 ${Math.round(h.adrenaline)}：主动开口时会说得急一点。`);
+  if (h.cortisol >= 40) out.push(`压力 ${Math.round(h.cortisol)}：主动找你时容易往坏处想。`);
+  if (h.dopamine >= 60) out.push(`快乐 ${Math.round(h.dopamine)}：主动说话会更轻快。`);
+  if (h.oxytocin >= 60) out.push(`亲密 ${Math.round(h.oxytocin)}：特别想黏着你，主动找你更频繁。`);
+  if (b.sleepiness >= 60) out.push(`困到 ${Math.round(b.sleepiness)}：不太想主动开口，找你的次数会变少。`);
+  if (b.hunger >= 60) out.push(`饿到 ${Math.round(b.hunger)}：主动说话会有点没耐心。`);
+  if (r.trust >= 85) out.push(`信任 ${Math.round(r.trust)}：主动开口时更愿意说心里话。`);
+  if (r.security <= 55) out.push(`安全感只有 ${Math.round(r.security)}：主动找你时更想确认你在不在。`);
   const fv = Number((s.fear || {}).v || 0);
   if (fv >= FEAR_SHOW) {
     const why = (s.fear || {}).why || '刚才';
-    out.push(`被${why}吓到了（怕劲儿 ${Math.round(fv)}）：心里还发毛，想找你陪一会儿，嘴上还嘴硬。`);
+    out.push(`被${why}吓到了（怕劲儿 ${Math.round(fv)}）：主动开口时还带着点没缓过来。`);
   }
   if (!out.length) out.push('现在各项都在舒服的位置，没什么在推我。');
   return out.slice(0, 4);
