@@ -1951,17 +1951,16 @@ async function emotionFromMood(mood, visibleText) {
   try {
     const status = await petApi.memoryStatus();
     modelReady = !!(status && status.modelReady);
-    if (modelReady) {
-      const cls = emotionClassifier();
-      const res = cls ? await cls.classify(tag, { noCooldown: true }) : null;
-      const hits = (res && res.hits) || [];
-      hitsOut = hits.map((h) => ({ kind: h.kind, sim: h.sim, intensity: h.intensity }));
-      if (hits.length) {
-        const hit = hits[0];
-        E.applyEvent(s, hit.kind, hit.intensity * 0.5, 'mood', now, hit.sim);
-        consoleLog('情感', `她自述的心情像 ${hit.kind}（相似度 ${hit.sim}，强度 ${(hit.intensity * 0.5).toFixed(2)}）`);
-        kinds = hits.map((h) => h.kind);
-      }
+    // 关键词直通不依赖向量模型，所以模型没就绪也照样识别常见词
+    const cls = emotionClassifier();
+    const res = cls ? await cls.classify(tag, { noCooldown: true, noVector: !modelReady }) : null;
+    const hits = (res && res.hits) || [];
+    hitsOut = hits.map((h) => ({ kind: h.kind, sim: h.sim, intensity: h.intensity, text: h.text }));
+    if (hits.length) {
+      const hit = hits[0];
+      E.applyEvent(s, hit.kind, hit.intensity * 0.5, 'mood', now, hit.sim);
+      consoleLog('情感', `她自述的心情像 ${hit.kind}${hit.text ? `（命中「${hit.text}」）` : ''}（相似度 ${hit.sim}，强度 ${(hit.intensity * 0.5).toFixed(2)}）`);
+      kinds = hits.map((h) => h.kind);
     }
   } catch (err) {
     consoleLog('警告', `情感识别失败：${err && err.message ? err.message : err}`);
@@ -2174,7 +2173,11 @@ function emotionMoodTrace() {
     );
   }
   const tags = hits
-    .map((h) => `<span class="emotion-tag">${escapeHtml(EMOTION_KIND_NAMES[h.kind] || h.kind)} · ${Number(h.sim || 0).toFixed(2)}</span>`)
+    .map((h) => {
+      const kind = EMOTION_KIND_NAMES[h.kind] || h.kind;
+      const label = escapeHtml(h.text || kind);
+      return `<span class="emotion-tag" title="命中类别：${escapeHtml(kind)}">${label} · ${Number(h.sim || 0).toFixed(2)}</span>`;
+    })
     .join('');
   return (
     `<div class="emotion-mood-raw">${escapeHtml(m.raw)}</div>` +

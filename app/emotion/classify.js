@@ -25,6 +25,9 @@ const SCENE_WORDS = {
   night_walk: ['夜路', '黑', '一个人走', '回家'],
 };
 
+// 关键词直通的等效相似度：比向量命中略高，保证它排在第一位
+const KEYWORD_SIM = 0.88;
+
 function clamp(v, lo, hi) {
   const n = Number(v);
   if (!Number.isFinite(n)) return lo;
@@ -87,6 +90,18 @@ async function loadPrototypesFromAsset() {
   return res.json();
 }
 
+// 关键词表：常见心情词直接归位，不用向量（短句向量区分度差）
+async function loadKeywordsFromAsset() {
+  try {
+    const url = new URL('./keywords.json', import.meta.url);
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok) return {};
+    return await res.json();
+  } catch (err) {
+    return {};
+  }
+}
+
 export function createEmotionClassifier(options = {}) {
   const opts = {
     embed: null,
@@ -104,7 +119,26 @@ export function createEmotionClassifier(options = {}) {
   let dim = 0;
   let building = null;
   let lastResult = null;
+  let keywordTable = null;
   const applied = new Map(); // kind -> { at, intensity }
+
+  // 关键词直通：最长子串优先，命中直接返回，不再走向量
+  async function keywordHits(text) {
+    if (!keywordTable) keywordTable = await loadKeywordsFromAsset();
+    const out = [];
+    for (const kind of Object.keys(keywordTable)) {
+      if (kind.startsWith('_')) continue;
+      const list = keywordTable[kind];
+      if (!Array.isArray(list)) continue;
+      let best = '';
+      for (const word of list) {
+        if (typeof word === 'string' && word && text.includes(word) && word.length > best.length) best = word;
+      }
+      if (best) out.push({ kind, sim: KEYWORD_SIM, text: best });
+    }
+    out.sort((a, b) => b.sim - a.sim || b.text.length - a.text.length);
+    return out.slice(0, cfg.maxHits).map((h) => ({ ...h, intensity: intensityOf(h.sim) }));
+  }
 
   function passSceneGate(kind, sim, text) {
     const words = SCENE_WORDS[kind];
@@ -219,6 +253,17 @@ export function createEmotionClassifier(options = {}) {
     const skipCooldown = !!options.noCooldown;
     const q = String(text || '').trim();
     if (!q) return { hits: [], top: null, reason: 'empty' };
+
+    // 第一路：关键词直通。命中就不走向量，也就不用等模型加载
+    const kw = await keywordHits(q);
+    if (kw.length) {
+      const result = { hits: kw, top: kw[0], model: 'keyword', count: 0, at: Date.now(), byKeyword: true };
+      lastResult = result;
+      return result;
+    }
+
+    // 第二路：原型向量 kNN（同一句只 embed 一次）
+    if (options.noVector) return { hits: [], top: null, reason: 'no-keyword' };
     const info = await ready();
     if (!info.ok) return { hits: [], top: null, error: info.error };
 
