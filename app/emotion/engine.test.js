@@ -468,6 +468,68 @@ test('生物钟：{phase} 仍按真实钟点', () => {
   assert.strictEqual(E.phase(23), '半夜');
 });
 
+// ---------------------------------------------------------------- 雷达
+
+test('雷达：先验越小，单条回复推动越大', () => {
+  const base = E.defaultState(T0).personality;
+  const stats = { replies: 1, intimate: 1, cold: 0, questions: 0, tsundere: 0, valenceSum: 60, valenceSqSum: 3600 };
+  const loose = E.deriveTraits(stats, base, 1);
+  const tight = E.deriveTraits(stats, base, 100);
+  assert.ok(loose.warmth > tight.warmth, '先验 1 应比 100 推得多：' + loose.warmth + ' vs ' + tight.warmth);
+  // 先验 1、1 条亲密：温暖 = (0.55*1 + 1) / 2
+  assert.ok(Math.abs(loose.warmth - 0.775) < 1e-9, '先验 1 的温暖应是 0.775，实际 ' + loose.warmth);
+  // 省略 span 时按默认 20 走
+  const dft = E.deriveTraits(stats, base);
+  assert.ok(Math.abs(dft.warmth - (0.55 * 20 + 1) / 21) < 1e-9, '默认先验 20 的温暖不对：' + dft.warmth);
+});
+
+test('雷达：没有统计时就是角色底色', () => {
+  const base = E.defaultState(T0).personality;
+  const t = E.deriveTraits({ replies: 0 }, base, 20);
+  assert.strictEqual(t.warmth, base.warmth);
+  assert.strictEqual(t.stubbornness, base.stubbornness);
+});
+
+// ---------------------------------------------------------------- 性格自适应
+
+test('性格自适应：rate 为 0 时不动底色', () => {
+  const s = E.defaultState(T0);
+  const before = { ...s.personality };
+  E.adaptPersonality(s, '哼', ['praise'], 80, 0);
+  assert.deepStrictEqual(s.personality, before);
+});
+
+test('性格自适应：好话让温暖升、敏感降，坏话反过来', () => {
+  const warm = E.defaultState(T0);
+  E.adaptPersonality(warm, '', ['praise'], 70, 0.02);
+  assert.ok(warm.personality.warmth > 0.55, '温暖应上升：' + warm.personality.warmth);
+  assert.ok(warm.personality.sensitivity < 0.55, '敏感应下降：' + warm.personality.sensitivity);
+
+  const cold = E.defaultState(T0);
+  E.adaptPersonality(cold, '', ['cold'], 30, 0.02);
+  assert.ok(cold.personality.sensitivity > 0.55, '敏感应上升：' + cold.personality.sensitivity);
+  assert.ok(cold.personality.warmth < 0.55, '温暖应下降：' + cold.personality.warmth);
+});
+
+test('性格自适应：傲娇句式推倔强，愉悦度推乐观，开放度不动', () => {
+  const s = E.defaultState(T0);
+  E.adaptPersonality(s, '哼，才不想理你呢', ['tease'], 60, 0.02);
+  assert.ok(s.personality.stubbornness > 0.55, '倔强应上升：' + s.personality.stubbornness);
+  assert.ok(s.personality.optimism > 0.55, '乐观应上升：' + s.personality.optimism);
+  assert.strictEqual(s.personality.openness, 0.55);
+});
+
+test('性格自适应：多次累积后夹在 0.35~0.8', () => {
+  const s = E.defaultState(T0);
+  for (let i = 0; i < 500; i += 1) E.adaptPersonality(s, '', ['praise'], 95, 0.02);
+  assert.strictEqual(s.personality.warmth, 0.8);
+  assert.strictEqual(s.personality.optimism, 0.8);
+  for (let i = 0; i < 2000; i += 1) E.adaptPersonality(s, '', ['cold'], 5, 0.02);
+  assert.ok(Math.abs(s.personality.warmth - 0.45) < 1e-6, '温暖应落到 0.45：' + s.personality.warmth);
+  assert.strictEqual(s.personality.sensitivity, 0.8);
+  assert.strictEqual(s.personality.optimism, 0.35);
+});
+
 // ---------------------------------------------------------------- 汇总
 
 console.log('');

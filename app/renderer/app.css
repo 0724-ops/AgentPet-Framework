@@ -7084,9 +7084,66 @@ html[data-panel="actions"] #close-picker {
   stroke-linejoin: round;
 }
 
+/* 对比线：上一轮结算前的雷达，白色虚线盖在数据面之上 */
+.em-radar-prev {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+  stroke-linejoin: round;
+}
+
+/* 卡片标题右侧的小胶囊按钮，沿用「简易 / 全量」的样式 */
+.emotion-pill {
+  align-self: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.emotion-pill:hover {
+  color: var(--text-main);
+}
+
+.emotion-pill.is-active {
+  border-color: rgba(108, 192, 166, 0.45);
+  background: rgba(108, 192, 166, 0.14);
+  color: var(--text-main);
+}
+
+/* 选项页「雷达平滑」滑块 */
+.emotion-range {
+  width: 100%;
+  margin: 4px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 选项页里需要横排的开关行（标签左、控件右） */
+.emotion-field--row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 .em-ax {
   fill: var(--text-muted);
   font-size: 9.5px;
+}
+
+/* 轴名下方的本轮变化量（仅「对比」打开时出现） */
+.em-ax-delta {
+  fill: rgba(255, 255, 255, 0.72);
+  font-size: 8.5px;
 }
 
 .em-ax.clickable {

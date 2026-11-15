@@ -137,6 +137,10 @@ const settings = store.get('agentpet.settings', {
   sleepHour: 22,
   // 每轮往系统提示里注入一行「当前状态：清醒」，模板来自 preset-emotion.md
   injectEmotionState: true,
+  // 雷达先验强度：越小学单条回复影响越大，默认 20 条
+  traitSpan: 20,
+  // 性格自适应：每轮语气是否慢慢沉淀进底色（影响情绪与说话方式），默认关
+  traitAdapt: false,
 });
 // 老版本存下来的设置里没有 scalePivot，补一个默认值（0 = 缩放时脚底不动）
 if (typeof settings.scalePivot !== 'number') settings.scalePivot = 0;
@@ -244,6 +248,11 @@ if (settings.proactiveFloor == null) settings.proactiveFloor = true;
 settings.proactiveFloor = !!settings.proactiveFloor;
 if (!Number.isFinite(settings.proactiveIgnoreHours)) settings.proactiveIgnoreHours = 12;
 settings.proactiveIgnoreHours = Math.max(1, Math.min(72, Math.round(settings.proactiveIgnoreHours)));
+// 雷达先验强度：老版本没有这个键，补默认 20；范围与滑块一致
+if (!Number.isFinite(settings.traitSpan)) settings.traitSpan = 20;
+settings.traitSpan = Math.max(1, Math.min(100, Math.round(settings.traitSpan)));
+if (settings.traitAdapt == null) settings.traitAdapt = false;
+settings.traitAdapt = !!settings.traitAdapt;
 // 生物钟：清醒 8~20 小时，越界的存值在这里拉回来
 if (!Number.isFinite(settings.wakeHour)) settings.wakeHour = 6;
 if (!Number.isFinite(settings.sleepHour)) settings.sleepHour = 22;
@@ -1764,6 +1773,8 @@ const emotionRuntime = {
   lastUserAt: 0,        // 用户最后一次发言时间（安静期闸门）
   lastRoll: null,
   lastMood: null,       // 本轮 MOOD 原话与向量归类结果（只展示，不持久化）
+  radarCompare: false,  // 雷达「对比上一轮」开关（仅本次运行，不落盘）
+  radarPrev: null,      // 上一轮结算前的六维快照，白线来源（仅内存）
   lastError: '',
   repaired: 0,
   note: '',
@@ -1780,6 +1791,12 @@ function emotionActiveId() {
 // 生物钟：身体与褪黑素按它换算钟点；{phase} 仍用真实时间
 function emotionRhythm() {
   return { wake: settings.wakeHour, sleep: settings.sleepHour };
+}
+
+// 性格自适应的每轮步长：跟先验强度联动，1 条最敏感、100 条最稳；夹在 0.2%~2%
+function traitAdaptRate() {
+  const span = Math.max(1, Math.min(100, Number(settings.traitSpan) || 20));
+  return Math.max(0.002, Math.min(0.02, 0.1 / span));
 }
 
 function emotionConfig() {
@@ -1864,6 +1881,7 @@ async function loadEmotionState({ force = false } = {}) {
       settleIgnoreDue(s, now);
       emotionRuntime.state = s;
       emotionRuntime.loadedFor = id;
+      emotionRuntime.radarPrev = null; // 换角色/重载后上一轮的快照不再适用
       emotionRuntime.repaired = Number(res.repaired) || 0;
       emotionRuntime.lastError = '';
       emotionRuntime.note = res.fresh ? '新档案已建立' : '';
@@ -1949,7 +1967,12 @@ async function emotionFromMood(mood, visibleText) {
     consoleLog('警告', `情感识别失败：${err && err.message ? err.message : err}`);
   }
   emotionRuntime.lastMood = { raw: tag, hits: hitsOut, at: now.toISOString(), modelReady };
-  E.noteReplyStats(s, reply || tag, kinds, E.feel(s).valence);
+  // 记下本轮开始前的六维，面板的「对比」白线就用它，直观看出这一轮把她推向了哪边
+  emotionRuntime.radarPrev = E.deriveTraits(s.stats, s.personality, settings.traitSpan);
+  const valence = E.feel(s).valence;
+  E.noteReplyStats(s, reply || tag, kinds, valence);
+  // 开关打开：这一轮的语气开始沉淀进底色，之后 feel() / 激素增益都会跟着变
+  if (settings.traitAdapt) E.adaptPersonality(s, reply || tag, kinds, valence, traitAdaptRate());
   saveEmotionState(false);
   renderEmotionPanel();
 }
@@ -2148,8 +2171,8 @@ function emotionMoodTrace() {
   );
 }
 
-// 六维雷达：纯内联 SVG，无第三方依赖
-function emotionRadar(items) {
+// 六维雷达：纯内联 SVG，无第三方依赖。prev 为可选的对比值（白线，画在数据面之上）
+function emotionRadar(items, prev) {
   const cx = 100;
   const cy = 100;
   const R = 62;
@@ -2163,6 +2186,12 @@ function emotionRadar(items) {
   const data = items
     .map((it, i) => point(i, Math.max(0, Math.min(1, Number(it.value) || 0))).map((x) => x.toFixed(1)).join(','))
     .join(' ');
+  const prevLine =
+    prev && prev.length === items.length
+      ? `<polygon points="${prev
+          .map((v, i) => point(i, Math.max(0, Math.min(1, Number(v) || 0))).map((x) => x.toFixed(1)).join(','))
+          .join(' ')}" class="em-radar-prev" />`
+      : '';
   const grid = [0.25, 0.5, 0.75, 1]
     .map((v) => `<polygon points="${ring(v)}" class="em-radar-grid" />`)
     .join('');
@@ -2170,15 +2199,19 @@ function emotionRadar(items) {
     .map((it, i) => {
       const [x1, y1] = point(i, 1);
       const [tx, ty] = point(i, 1.28);
+      // 变化量换到轴名下方一行，不挤占标签本身
+      const delta = Number.isFinite(it.delta) && Math.abs(it.delta) >= 0.05
+        ? `<tspan x="${tx.toFixed(1)}" dy="9" class="em-ax-delta">${it.delta > 0 ? '+' : ''}${it.delta.toFixed(1)}</tspan>`
+        : '';
       return (
         `<line x1="${cx}" y1="${cy}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" class="em-radar-axis" />` +
-        `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" class="em-ax">${escapeHtml(it.name)}</text>`
+        `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" class="em-ax">${escapeHtml(it.name)}${delta}</text>`
       );
     })
     .join('');
   return (
     `<div class="emotion-radar">` +
-    `<svg viewBox="0 0 200 200" aria-hidden="true">${grid}${axes}<polygon points="${data}" class="em-radar-data" /></svg>` +
+    `<svg viewBox="0 0 200 200" aria-hidden="true">${grid}${axes}<polygon points="${data}" class="em-radar-data" />${prevLine}</svg>` +
     `</div>`
   );
 }
@@ -2272,12 +2305,24 @@ function renderEmotionStatus() {
   const simple = settings.emotionSimpleView !== false;
 
   // 雷达只读：数值由她自己的表达慢慢统计出来，不参与公式，也不能手改
-  const traits = E.deriveTraits(snap.state.stats, snap.state.personality);
-  const personalityItems = E.PERSONALITY_KEYS.map((key) => ({
-    key,
-    name: EMOTION_PERSONALITY_NAMES[key] || key,
-    value: Number(traits[key]) || 0,
-  }));
+  const traits = E.deriveTraits(snap.state.stats, snap.state.personality, settings.traitSpan);
+  // 「对比」：白线与差值都取上一轮结算前的六维，只活在本进程内存里
+  const prevTraits = emotionRuntime.radarCompare && emotionRuntime.radarPrev ? emotionRuntime.radarPrev : null;
+  const prevValues = prevTraits ? E.PERSONALITY_KEYS.map((key) => Number(prevTraits[key]) || 0) : null;
+  const personalityItems = E.PERSONALITY_KEYS.map((key) => {
+    const value = Number(traits[key]) || 0;
+    const before = prevTraits ? Number(prevTraits[key]) : NaN;
+    // 换算成 0~100 的百分点差值：本轮微调常常不到 1 分，所以保留一位小数
+    return {
+      key,
+      name: EMOTION_PERSONALITY_NAMES[key] || key,
+      value,
+      delta: Number.isFinite(before) ? (value - before) * 100 : null,
+    };
+  });
+  const radarHint = !emotionRuntime.radarCompare
+    ? '按她自述的心情慢慢统计，不能手改'
+    : (prevValues ? '白线是上一轮结算前的样子，轴名下方是本轮变化' : '聊一轮后，白线会出现在这里');
 
   root.innerHTML = `
     <div class="emotion-view-toggle">
@@ -2311,9 +2356,12 @@ function renderEmotionStatus() {
         </section>
 
         <section class="emotion-card">
-          <div class="emotion-card-head"><b>情绪分析</b></div>
-          ${emotionRadar(personalityItems)}
-          <div class="emotion-hint">按她自述的心情慢慢统计，不能手改</div>
+          <div class="emotion-card-head">
+            <b>情绪分析</b>
+            <button type="button" class="emotion-pill${emotionRuntime.radarCompare ? ' is-active' : ''}" data-em-action="radar-compare" title="白线画上一轮结算前的雷达">对比</button>
+          </div>
+          ${emotionRadar(personalityItems, prevValues)}
+          <div class="emotion-hint">${radarHint}</div>
         </section>
 
         <section class="emotion-card emotion-card--tight">
@@ -2541,6 +2589,12 @@ function renderEmotionParams() {
   const cooldownLeft = roll && roll.cooldownLeft ? Math.ceil(roll.cooldownLeft) : 0;
   const quietLeft = roll && roll.quietLeft ? Math.ceil(roll.quietLeft) : 0;
 
+  // 雷达平滑：先验强度，1 最敏感、100 最稳；每轮最多推动 100/(span+n) 分
+  const span = Math.max(1, Math.min(100, Number(settings.traitSpan) || 20));
+  const replies = Number(snap.state.stats && snap.state.stats.replies) || 0;
+  const perRound = (100 / (span + replies)).toFixed(1);
+  const adaptRate = traitAdaptRate();
+
   // 权重直接乘在每次抽签的概率上，折算成期望间隔 = 基线 / 权重，改了要立刻能看出来
   const weight = Math.max(0, Number(settings.proactiveWeight) || 0);
   const expectText = weight <= 0
@@ -2580,6 +2634,19 @@ function renderEmotionParams() {
 
     ${rhythmCardHtml()}
 
+    <section class="emotion-card emotion-param-card">
+      <div class="emotion-card-head"><b>雷达平滑</b></div>
+      <div class="emotion-kv"><span>先验强度</span><b><span data-trait-span-value>${span}</span> 条</b></div>
+      <input class="emotion-range" type="range" min="1" max="100" step="1" value="${span}" data-em-setting="traitSpan" />
+      <div class="rhythm-axis"><span>1 · 敏感</span><span>50</span><span>100 · 稳定</span></div>
+      <div class="emotion-sub" data-trait-span-push>每轮最多推动 ${perRound} 分 · 性格步长 ${(adaptRate * 100).toFixed(2)}%（已累计 ${replies} 条回复）</div>
+      <label class="emotion-field emotion-field--row">
+        <span>性格自适应</span>
+        <input type="checkbox" data-em-setting="traitAdapt"${settings.traitAdapt ? ' checked' : ''} />
+      </label>
+      <div class="emotion-hint">越靠左，雷达更快跟上、性格改写得也更快；只影响展示与自适应，不参与主动开口判定。</div>
+    </section>
+
     <div class="emotion-actions">
       <button class="btn-ghost-sm" data-em-action="reset">重置状态</button>
       <button class="btn-ghost-sm" data-em-action="rebuild">重建心情原型向量</button>
@@ -2603,6 +2670,10 @@ function applyEmotionSettingValue(key, raw) {
     settings.injectEmotionState = !!raw;
     return;
   }
+  if (key === 'traitAdapt') {
+    settings.traitAdapt = !!raw;
+    return;
+  }
   const n = Number(raw);
   if (!Number.isFinite(n)) return;
   if (key === 'proactiveCheckSeconds') settings[key] = Math.max(15, Math.min(600, Math.round(n)));
@@ -2611,6 +2682,12 @@ function applyEmotionSettingValue(key, raw) {
   else if (key === 'proactiveCooldownMin') settings[key] = Math.max(0, Math.min(1440, Math.round(n)));
   else if (key === 'proactiveQuietMin') settings[key] = Math.max(0, Math.min(120, Math.round(n)));
   else if (key === 'proactiveIgnoreHours') settings[key] = Math.max(1, Math.min(72, Math.round(n)));
+  else if (key === 'traitSpan') {
+    const span = Math.max(1, Math.min(100, Math.round(n)));
+    // 先验强度变了，旧快照是按旧强度算的，直接作废避免出现假的差值
+    if (span !== settings.traitSpan) emotionRuntime.radarPrev = null;
+    settings.traitSpan = span;
+  }
 }
 
 function initEmotionPanel() {
@@ -2631,6 +2708,21 @@ function initEmotionPanel() {
 
 function bindEmotionEvents(root) {
   if (!root) return;
+  // 滑块拖动过程中只更新读数，松手才由 change 落盘
+  root.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t || !t.dataset || t.dataset.emSetting !== 'traitSpan') return;
+    const v = Math.max(1, Math.min(100, Math.round(Number(t.value) || 20)));
+    const host = t.closest ? t.closest('.emotion-param-card') : null;
+    const out = host ? host.querySelector('[data-trait-span-value]') : null;
+    if (out) out.textContent = String(v);
+    const push = host ? host.querySelector('[data-trait-span-push]') : null;
+    if (push) {
+      const n = Number(emotionRuntime.state && emotionRuntime.state.stats ? emotionRuntime.state.stats.replies : 0) || 0;
+      const rate = Math.max(0.002, Math.min(0.02, 0.1 / v));
+      push.textContent = `每轮最多推动 ${(100 / (v + n)).toFixed(1)} 分 · 性格步长 ${(rate * 100).toFixed(2)}%（已累计 ${n} 条回复）`;
+    }
+  });
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (!t || !t.dataset) return;
@@ -2658,6 +2750,11 @@ function bindEmotionEvents(root) {
       commitRhythm();
     }
     else if (action === 'rebuild') void rebuildEmotionVectors();
+    else if (action === 'radar-compare') {
+      // 纯前端开关：白线与差值都只用内存里的上一轮快照，不落盘
+      emotionRuntime.radarCompare = !emotionRuntime.radarCompare;
+      renderEmotionPanel();
+    }
   });
 }
 initEmotionPanel();

@@ -721,6 +721,9 @@ function applyIgnoreIfDue(s, now, config) {
 // 平滑窗口：相当于 20 条回复的先验，越大越不容易被几句话带偏
 const TRAIT_SPAN = 20;
 
+// 傲娇句式：统计和性格自适应用同一条规则
+const TSUNDERE_RE = /(哼|才不|才没|别管|不要你|谁要|讨厌)/;
+
 function blankReplyStats() {
   return {
     replies: 0,
@@ -745,16 +748,43 @@ function noteReplyStats(s, reply, kinds, valence) {
   if (list.some((k) => INTIMATE_KINDS.has(k))) st.intimate += 1;
   if (list.some((k) => COLD_KINDS.has(k) || k === 'scare')) st.cold += 1;
   if (/[?？]/.test(text)) st.questions += 1;
-  if (/(哼|才不|才没|别管|不要你|谁要|讨厌)/.test(text)) st.tsundere += 1;
+  if (TSUNDERE_RE.test(text)) st.tsundere += 1;
   return st;
 }
 
+// 性格自适应（选项页开关，默认关）：把这一轮的即时语气慢慢沉淀进底色 personality，
+// 从而真正影响 feel()、激素增益与说话方式。rate 是每轮向目标靠拢的比例。
+// 只动 4 维：温暖 / 敏感 / 倔强 / 乐观；开放度仍只做展示，韧性交给长期统计。
+function adaptPersonality(s, reply, kinds, valence, rate) {
+  if (!s || !s.personality) return null;
+  const r = clamp(Number(rate) || 0, 0, 0.05);
+  if (r <= 0) return s.personality;
+  const p = s.personality;
+  const list = Array.isArray(kinds) ? kinds : [];
+  const intimate = list.some((k) => INTIMATE_KINDS.has(k));
+  const cold = list.some((k) => COLD_KINDS.has(k) || k === 'scare');
+  const move = (key, target) => {
+    const cur = Number(p[key]) || 0.55;
+    // 底色留在 0.35~0.8：太低会变成另一个人，太高会把性格锁死
+    p[key] = clamp(cur + (clamp(target, 0, 1) - cur) * r, 0.35, 0.8);
+  };
+  // 好事让她更暖、更不敏感；坏事反过来；两个方向互相牵制，不会只涨不跌
+  if (intimate) { move('warmth', 0.9); move('sensitivity', 0.45); }
+  if (cold) { move('sensitivity', 0.9); move('warmth', 0.45); }
+  if (TSUNDERE_RE.test(String(reply || ''))) move('stubbornness', 0.9);
+  const v = Number(valence);
+  if (Number.isFinite(v)) move('optimism', v / 100);
+  return p;
+}
+
 // 雷达六维：以角色当前底色为先验，被她的表达慢慢拉动；只用于展示，不回灌公式
-function deriveTraits(stats, personality) {
+// span 是先验强度（等价「多少条统计才能和底色五五开」），由用户设置页调节，默认 TRAIT_SPAN
+function deriveTraits(stats, personality, span) {
   const st = stats || blankReplyStats();
   const p = personality || PERSONALITY_DEFAULT;
   const n = Number(st.replies) || 0;
-  const blend = (count, prior) => clamp((Number(prior) * TRAIT_SPAN + (Number(count) || 0)) / (TRAIT_SPAN + n), 0, 1);
+  const prior = Math.max(1, Math.min(200, Number(span) || TRAIT_SPAN));
+  const blend = (count, base) => clamp((Number(base) * prior + (Number(count) || 0)) / (prior + n), 0, 1);
   const mean = n ? Number(st.valenceSum) / n : 50;
   const sq = n ? Number(st.valenceSqSum) / n : 2500;
   const sd = Math.sqrt(Math.max(0, sq - mean * mean));
@@ -762,8 +792,8 @@ function deriveTraits(stats, personality) {
   return {
     warmth: blend(st.intimate, p.warmth),
     sensitivity: blend(st.cold, p.sensitivity),
-    resilience: clamp((Number(p.resilience) * TRAIT_SPAN + stable * n) / (TRAIT_SPAN + n), 0, 1),
-    optimism: clamp((Number(p.optimism) * TRAIT_SPAN + (Number(st.valenceSum) || 0) / 100) / (TRAIT_SPAN + n), 0, 1),
+    resilience: clamp((Number(p.resilience) * prior + stable * n) / (prior + n), 0, 1),
+    optimism: clamp((Number(p.optimism) * prior + (Number(st.valenceSum) || 0) / 100) / (prior + n), 0, 1),
     openness: blend(st.questions, p.openness),
     stubbornness: blend(st.tsundere, p.stubbornness),
   };
@@ -935,7 +965,7 @@ const API = {
   proactiveQuota, baseGapMinutes, rollProactive, markProactive,
   markUserMessage, applyIgnoreIfDue,
   // 雷达
-  noteReplyStats, deriveTraits, TRAIT_SPAN,
+  noteReplyStats, deriveTraits, adaptPersonality, TRAIT_SPAN,
   // 展示
   influences, placeholders, fillTemplate, daysTogether,
 };
