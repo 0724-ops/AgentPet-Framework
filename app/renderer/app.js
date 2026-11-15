@@ -2139,6 +2139,18 @@ const EMOTION_BLOCKED_TEXT = {
   quota: '今日额度用完', night: '夜间静默', cooldown: '冷却中', quiet: '刚聊完，不打扰',
 };
 
+// 简易 / 全量视图开关先隐藏（代码保留），需要时把这里改成 true 即可恢复
+const SHOW_EMOTION_VIEW_TOGGLE = false;
+
+// UI 精简：这些条要么跟别的条一个意思、要么对普通用户太抽象，只隐藏显示，数值照常算。
+// 想恢复某一条，从集合里删掉对应 key 即可。
+const EMOTION_HIDDEN_METERS = new Set([
+  'control',    // 掌控：太抽象
+  'adrenaline', // 紧张：和「压力」几乎同义
+  'serotonin',  // 满足：和「快乐」重合
+  'oxytocin',   // 亲密：和「关系 · 亲近」重复
+]);
+
 function emotionMeter(label, value, max, display) {
   const pct = Math.max(0, Math.min(100, ((Number(value) || 0) / (max || 100)) * 100));
   const text = display == null ? String(Math.round(Number(value) || 0)) : String(display);
@@ -2166,8 +2178,7 @@ function emotionMoodTrace() {
     .join('');
   return (
     `<div class="emotion-mood-raw">${escapeHtml(m.raw)}</div>` +
-    `<div class="emotion-tags">${tags}</div>` +
-    `<div class="emotion-hint">强度 ${Number(hits[0].intensity || 0).toFixed(2)} × 0.5，只推动状态，不写进对话</div>`
+    `<div class="emotion-tags">${tags}</div>`
   );
 }
 
@@ -2302,7 +2313,16 @@ function renderEmotionStatus() {
   const emo = snap.emotion;
   const ph = snap.placeholders;
   const days = ph.daysTogether;
-  const simple = settings.emotionSimpleView !== false;
+  const simple = SHOW_EMOTION_VIEW_TOGGLE ? settings.emotionSimpleView !== false : true;
+  // 此刻的三条：掌控默认隐藏，见 EMOTION_HIDDEN_METERS
+  const moodMeters = [
+    ['valence', '愉悦', emo.valence],
+    ['arousal', '唤醒', emo.arousal],
+    ['control', '掌控', emo.control],
+  ]
+    .filter(([key]) => !EMOTION_HIDDEN_METERS.has(key))
+    .map(([, label, value]) => emotionMeter(label, value, 100))
+    .join('');
 
   // 雷达只读：数值由她自己的表达慢慢统计出来，不参与公式，也不能手改
   const traits = E.deriveTraits(snap.state.stats, snap.state.personality, settings.traitSpan);
@@ -2325,10 +2345,11 @@ function renderEmotionStatus() {
     : (prevValues ? '白线是上一轮结算前的样子，轴名下方是本轮变化' : '聊一轮后，白线会出现在这里');
 
   root.innerHTML = `
+    ${SHOW_EMOTION_VIEW_TOGGLE ? `
     <div class="emotion-view-toggle">
       <button type="button" data-em-view="simple" class="${simple ? 'is-active' : ''}">简易</button>
       <button type="button" data-em-view="full" class="${simple ? '' : 'is-active'}">全量</button>
-    </div>
+    </div>` : ''}
     <div class="emotion-grid">
       <div class="emotion-col">
         <section class="emotion-card emotion-card--tight">
@@ -2337,6 +2358,8 @@ function renderEmotionStatus() {
           ${days == null ? '' : `<div class="emotion-sub">在一起 ${days} 天</div>`}
           ${snap.note ? `<div class="emotion-sub">${escapeHtml(snap.note)}</div>` : ''}
           ${snap.repaired ? `<div class="emotion-sub">已用默认值修复 ${snap.repaired} 项</div>` : ''}
+          <div class="emotion-divider"></div>
+          ${emotionMeter('今日还能主动', snap.quota.left, snap.quota.cap, `${snap.quota.left} / ${snap.quota.cap}`)}
         </section>
 
         <section class="emotion-card">
@@ -2346,9 +2369,7 @@ function renderEmotionStatus() {
             <span class="emotion-tag">嘴上 ${escapeHtml(emo.outer)}</span>
             <span class="emotion-tag">强度 ${Math.round((Number(emo.intensity) || 0) * 100)}%</span>
           </div>
-          ${emotionMeter('愉悦', emo.valence, 100)}
-          ${emotionMeter('唤醒', emo.arousal, 100)}
-          ${emotionMeter('掌控', emo.control, 100)}
+          ${moodMeters}
           ${simple ? '' : `
           ${emotionMeter('话多', snap.outbound.verbosity, 2, `${snap.outbound.verbosity.toFixed(2)}×`)}
           ${emotionMeter('回速', snap.outbound.delay, 2, `${snap.outbound.delay.toFixed(2)}×`)}
@@ -2363,20 +2384,15 @@ function renderEmotionStatus() {
           ${emotionRadar(personalityItems, prevValues)}
           <div class="emotion-hint">${radarHint}</div>
         </section>
-
-        <section class="emotion-card emotion-card--tight">
-          <div class="emotion-card-head"><b>本轮心情</b></div>
-          ${emotionMoodTrace()}
-        </section>
       </div>
 
       <div class="emotion-col">
         <section class="emotion-card">
           <div class="emotion-card-head"><b>状态</b></div>
           ${simple ? '' : `
-          ${Object.keys(EMOTION_BODY_NAMES).map((key) => emotionMeter(EMOTION_BODY_NAMES[key], snap.state.body[key], 100)).join('')}
+          ${Object.keys(EMOTION_BODY_NAMES).filter((key) => !EMOTION_HIDDEN_METERS.has(key)).map((key) => emotionMeter(EMOTION_BODY_NAMES[key], snap.state.body[key], 100)).join('')}
           <div class="emotion-divider"></div>`}
-          ${Object.keys(EMOTION_HORMONE_NAMES).map((key) => emotionMeter(EMOTION_HORMONE_NAMES[key], snap.state.hormones[key], 100)).join('')}
+          ${Object.keys(EMOTION_HORMONE_NAMES).filter((key) => !EMOTION_HIDDEN_METERS.has(key)).map((key) => emotionMeter(EMOTION_HORMONE_NAMES[key], snap.state.hormones[key], 100)).join('')}
         </section>
 
         <section class="emotion-card">
@@ -2388,6 +2404,11 @@ function renderEmotionStatus() {
           <div class="emotion-card-head"><b>实时状态</b></div>
           <ul class="emotion-influences">${snap.influences.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
           <div class="emotion-hint">只影响她长时间待机时主动开口的语气，不写进普通对话</div>
+        </section>
+
+        <section class="emotion-card emotion-card--tight">
+          <div class="emotion-card-head"><b>本轮心情</b></div>
+          ${emotionMoodTrace()}
         </section>
       </div>
     </div>
