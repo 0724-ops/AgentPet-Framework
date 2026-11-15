@@ -28,6 +28,27 @@ const SCENE_WORDS = {
 // 关键词直通的等效相似度：比向量命中略高，保证它排在第一位
 const KEYWORD_SIM = 0.88;
 
+// 关键词匹配（纯函数，导出便于单测）：
+// 每类取命中的最长词，按长度优先、最多 maxHits 类
+export function matchKeywords(table, text, maxHits = DEFAULTS.maxHits) {
+  const q = String(text || '');
+  const limit = Math.max(1, Math.floor(Number(maxHits)) || 1);
+  const out = [];
+  if (!table || typeof table !== 'object') return out;
+  for (const kind of Object.keys(table)) {
+    if (kind.startsWith('_')) continue;
+    const list = table[kind];
+    if (!Array.isArray(list)) continue;
+    let best = '';
+    for (const word of list) {
+      if (typeof word === 'string' && word && q.includes(word) && word.length > best.length) best = word;
+    }
+    if (best) out.push({ kind, sim: KEYWORD_SIM, text: best });
+  }
+  out.sort((a, b) => b.sim - a.sim || b.text.length - a.text.length);
+  return out.slice(0, limit).map((h) => ({ ...h, intensity: intensityOf(h.sim) }));
+}
+
 function clamp(v, lo, hi) {
   const n = Number(v);
   if (!Number.isFinite(n)) return lo;
@@ -122,22 +143,10 @@ export function createEmotionClassifier(options = {}) {
   let keywordTable = null;
   const applied = new Map(); // kind -> { at, intensity }
 
-  // 关键词直通：最长子串优先，命中直接返回，不再走向量
+  // 关键词直通：命中直接返回，不再走向量
   async function keywordHits(text) {
     if (!keywordTable) keywordTable = await loadKeywordsFromAsset();
-    const out = [];
-    for (const kind of Object.keys(keywordTable)) {
-      if (kind.startsWith('_')) continue;
-      const list = keywordTable[kind];
-      if (!Array.isArray(list)) continue;
-      let best = '';
-      for (const word of list) {
-        if (typeof word === 'string' && word && text.includes(word) && word.length > best.length) best = word;
-      }
-      if (best) out.push({ kind, sim: KEYWORD_SIM, text: best });
-    }
-    out.sort((a, b) => b.sim - a.sim || b.text.length - a.text.length);
-    return out.slice(0, cfg.maxHits).map((h) => ({ ...h, intensity: intensityOf(h.sim) }));
+    return matchKeywords(keywordTable, text, cfg.maxHits);
   }
 
   function passSceneGate(kind, sim, text) {
