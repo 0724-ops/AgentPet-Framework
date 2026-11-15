@@ -7378,6 +7378,19 @@ html[data-panel="actions"] #close-picker {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
+/* 「现在」指针：一条竖线，穿过整条时间条 */
+.rhythm-now {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.32);
+  pointer-events: none;
+}
+
 .rhythm-thumb:hover,
 .rhythm-thumb:focus-visible {
   transform: scale(1.08);
@@ -7439,6 +7452,12 @@ html[data-panel="actions"] #close-picker {
   font-size: 10.5px;
   color: var(--text-muted);
   line-height: 1.6;
+}
+
+/* 「现在」那行：时间 + 困倦值，稍微提亮 */
+.rhythm-readout--now {
+  color: var(--accent);
+  font-size: 11px;
 }
 
 /* 生物钟卡片底部的「对话注入当前状态」开关：横向一行 */

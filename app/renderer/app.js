@@ -2437,11 +2437,26 @@ function rhythmStripHtml(r) {
     .join('');
 }
 
+// 真实钟点换算成 0~24 的小数，生物钟条上的「现在」指针用它定位
+function nowHourOfDay(d = new Date()) {
+  return d.getHours() + d.getMinutes() / 60;
+}
+
+// 当前困倦值：情感系统没跑时返回 null，只显示时间
+function currentSleepiness() {
+  const body = emotionRuntime.state && emotionRuntime.state.body;
+  const v = body ? Number(body.sleepiness) : NaN;
+  return Number.isFinite(v) ? Math.round(v) : null;
+}
+
 function rhythmSummaryHtml(r) {
   const spans = E.rhythmSegments(r)
     .map((seg) => `${seg.name} ${fmtClock(seg.start)}–${fmtClock(seg.end)}`)
     .join(' · ');
+  const now = nowHourOfDay();
+  const sleepiness = currentSleepiness();
   return `
+    <div class="rhythm-readout rhythm-readout--now">现在 ${fmtClock(now)}${sleepiness == null ? '' : ` · 困倦 ${sleepiness}`}</div>
     <div class="rhythm-readout">起床 ${fmtClock(r.wake)} · 入睡 ${fmtClock(r.sleep)} · 清醒 ${r.wakeLen} 小时 / 睡眠 ${r.sleepLen} 小时</div>
     <div class="rhythm-readout rhythm-readout--sub">${spans}</div>
   `;
@@ -2449,6 +2464,7 @@ function rhythmSummaryHtml(r) {
 
 function rhythmCardHtml() {
   const r = E.normalizeRhythm(emotionRhythm());
+  const nowHour = nowHourOfDay();
   const thumb = (key, hour, label) =>
     `<div class="rhythm-thumb" data-rhythm-thumb="${key}" role="slider" tabindex="0"`
     + ` aria-label="${label}" aria-valuemin="0" aria-valuemax="23" aria-valuenow="${hour}"`
@@ -2458,6 +2474,7 @@ function rhythmCardHtml() {
       <div class="emotion-card-head"><b>生物钟</b></div>
       <div class="rhythm-range" data-rhythm-range>
         <div class="rhythm-track" style="background:${rhythmTrackBg(r)}"></div>
+        <span class="rhythm-now" style="left:${(nowHour / 24) * 100}%" title="现在 ${fmtClock(nowHour)}"></span>
         ${thumb('wakeHour', r.wake, '起床时间')}
         ${thumb('sleepHour', r.sleep, '入睡时间')}
       </div>
@@ -5334,7 +5351,7 @@ function charTemplate(text) {
 }
 
 // 每轮一行的状态注入：文案在 preset-emotion.md（{state} 由引擎现算），
-// 只进 system prompt，不写进聊天记录，所以永远不会过期。
+// 只贴在请求体里最新一条用户消息的时间戳后面，不写进聊天记录，所以永远不会过期。
 function emotionStateBlock() {
   if (settings.injectEmotionState === false) return '';
   if (!emotionActive() || !emotionRuntime.state) return '';
@@ -5355,13 +5372,15 @@ function buildChatMessages() {
   const summary = String(store.get('agentpet.compressSummary', '') || '');
   // 时间开关关掉时，连那句「怎么读时间戳」的说明也一起拿掉，保持提示词干净
   const withTime = promptTimeOn();
+  // 状态行不进 system：放进 system 会每轮变化，把靠前缀复用的 KV Cache 整段作废，
+  // 改成跟时间戳一起贴在最新一条用户消息前面（见下方），既省缓存也读着自然
+  const stateLine = emotionStateBlock();
   const system = [
     charTemplate(getPersonaText()),
     withTime ? charTemplate(timeNoteMd) : '',
     charTemplate(speakFormatMd),
     summary ? `早前对话摘要：\n${summary}` : '',
     longMemoryContext.block,
-    emotionStateBlock(),
     charTemplate(actionsBlock),
     toolsPromptBlock(),
   ]
@@ -5369,15 +5388,22 @@ function buildChatMessages() {
     .join('\n\n');
   // historyWindow 的语义是「最近 N 轮对话」；100 = MAX，发送压缩点之后全部
   const history = buildApiHistory(settings.historyWindow);
-  // 时钟只贴在最新一条用户消息上（buildApiHistory 返回的是新对象，改不到 si.chat）。
-  if (withTime) {
-    const stamp = timeStampForPrompt();
+  // 时钟与状态只贴在最新一条用户消息上（buildApiHistory 返回的是新对象，改不到 si.chat）。
+  // 格式：[2026-11-15 周六 14:30] (状态：清醒) 正文
+  const head = [withTime ? `[${timeStampForPrompt()}]` : '', stateLine].filter(Boolean).join(' ');
+  let attached = false;
+  if (head) {
     for (let i = history.length - 1; i >= 0; i--) {
       if (history[i].role === 'user' && typeof history[i].content === 'string') {
-        history[i].content = `[${stamp}] ${history[i].content}`;
+        history[i].content = `${head} ${history[i].content}`;
+        attached = true;
         break;
       }
     }
+  }
+  // 兜底：万一窗口里没有用户消息（不该发生），状态不能被吞掉，退回 system
+  if (head && !attached) {
+    return [{ role: 'system', content: [system, head].filter(Boolean).join('\n\n') }, ...history];
   }
   return [{ role: 'system', content: system }, ...history];
 }

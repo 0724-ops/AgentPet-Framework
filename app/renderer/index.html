@@ -593,7 +593,7 @@
                   保存时人设写回当前角色目录的 <code>persona.md</code>，其余分别写回
                   <code>si/app/preset-speak.md</code>、<code>preset-time.md</code>、<code>preset-memory.md</code>、<code>preset-actions.md</code>、
                   <code>preset-proactive.md</code>、<code>preset-emotion.md</code>。
-                  MEMORY 里用 <code>{{MEMORIES}}</code> 代表记忆条目列表；EMOTION 里用 <code>{state}</code> 代表当前状态词（清醒 / 刚睡醒 / 有点困 / 很困 / 刚被叫醒）；任意提示词里用 <code>{{char}}</code> 代表当前角色名。
+                  MEMORY 里用 <code>{{MEMORIES}}</code> 代表记忆条目列表；EMOTION 里用 <code>{state}</code> 代表当前状态词（清醒 / 刚睡醒 / 有点困 / 很困 / 刚被叫醒），会跟时间戳一起贴在最新一条用户消息前面；任意提示词里用 <code>{{char}}</code> 代表当前角色名。
                 </p>
               </div>
               <button class="btn-save" id="btn-save-all">保存</button>
