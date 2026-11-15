@@ -187,6 +187,8 @@ const PRESET_MEMORY_FILE = path.join(APP_DIR, 'preset-memory.md');
 const PRESET_COMPRESS_FILE = path.join(APP_DIR, 'preset-compress.md');
 // 主动开口的指令模板：用户没人说话时按它拼一句
 const PRESET_PROACTIVE_FILE = path.join(APP_DIR, 'preset-proactive.md');
+// 每轮注入的状态行模板（{state} 为当前状态词），不写进聊天记录
+const PRESET_EMOTION_FILE = path.join(APP_DIR, 'preset-emotion.md');
 // 可插拔工具注册表：只登记真 Tool Call；SPEAK / MEM_MARK 属于底层协议，不走这里
 const TOOLS_CONFIG_FILE = path.join(APP_DIR, 'tools.config.json');
 // 繁 → 简回落表（OpenCC t2s 单字 + 词组例外），用于兜底修正转写结果
@@ -2991,6 +2993,9 @@ function registerIpc() {
   const proactivePresetIO = presetTextIO(PRESET_PROACTIVE_FILE);
   ipcMain.handle('preset:read-proactive', () => proactivePresetIO.read());
   ipcMain.handle('preset:write-proactive', (_e, text) => proactivePresetIO.write(text));
+  const emotionPresetIO = presetTextIO(PRESET_EMOTION_FILE);
+  ipcMain.handle('preset:read-emotion', () => emotionPresetIO.read());
+  ipcMain.handle('preset:write-emotion', (_e, text) => emotionPresetIO.write(text));
 
   // 情感状态：按角色目录隔离，读写走主进程；前端只拿 state 对象
   function activeEmotionTarget(id) {

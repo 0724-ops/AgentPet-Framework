@@ -447,6 +447,22 @@ test('生物钟：改作息后困意与褪黑素按新钟点重新起算', () =>
   assert.ok(n.body.sleepiness > 70, '默认作息的凌晨该困，实际 ' + n.body.sleepiness);
 });
 
+test('生物钟：状态标签五档（睡眠段优先，其余按困意）', () => {
+  const s = fresh();
+  // 默认 06:00 起床 / 22:00 入睡
+  assert.strictEqual(E.stateTag(s, at(2, 0), undefined), '刚被叫醒');
+  assert.strictEqual(E.stateTag(s, at(6, 20), undefined), '刚睡醒');
+  s.body.sleepiness = 30;
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '清醒');
+  s.body.sleepiness = 70;
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '有点困');
+  s.body.sleepiness = 85;
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '很困');
+  // 换作息后按虚拟段判断：18:00 起床 / 14:00 入睡，真实 14:30 在睡眠段
+  assert.strictEqual(E.stateTag(s, at(14, 30), { wake: 18, sleep: 14 }), '刚被叫醒');
+  assert.strictEqual(E.stateTag(s, at(18, 20), { wake: 18, sleep: 14 }), '刚睡醒');
+});
+
 test('生物钟：{phase} 仍按真实钟点', () => {
   assert.strictEqual(E.phase(7), '清晨');
   assert.strictEqual(E.phase(23), '半夜');

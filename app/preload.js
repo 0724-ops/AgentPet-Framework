@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('petApi', {
   // 主动开口的指令模板（preset-proactive.md）
   readPresetProactive: () => ipcRenderer.invoke('preset:read-proactive'),
   writePresetProactive: (text) => ipcRenderer.invoke('preset:write-proactive', text),
+  readPresetEmotion: () => ipcRenderer.invoke('preset:read-emotion'),
+  writePresetEmotion: (text) => ipcRenderer.invoke('preset:write-emotion', text),
   // 情感状态：每个角色目录一份 emotion.json
   loadEmotion: (payload) => ipcRenderer.invoke('emotion:load', payload),
   saveEmotion: (payload) => ipcRenderer.invoke('emotion:save', payload),

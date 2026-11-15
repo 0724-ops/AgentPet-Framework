@@ -235,6 +235,20 @@ function rebaseRhythm(s, now, rhythm) {
   return s;
 }
 
+// 每轮注入的一行状态：只给词，不给数值，也不带行为建议。
+// 真实时间落在睡眠段 → 刚被叫醒；起床 40 分钟内 → 刚睡醒；其余按困意分档。
+function stateTag(s, now, rhythm) {
+  const r = normalizeRhythm(rhythm);
+  const d = (clockHoursOf(now) - r.wake + 24) % 24;
+  if (d >= r.wakeLen) return '刚被叫醒';
+  if (d < 2 / 3) return '刚睡醒';
+  const sleepiness = Number(s && s.body ? s.body.sleepiness : NaN);
+  if (!Number.isFinite(sleepiness)) return '清醒';
+  if (sleepiness >= 80) return '很困';
+  if (sleepiness >= 65) return '有点困';
+  return '清醒';
+}
+
 // ---------------------------------------------------------------- 默认状态
 
 function defaultState(now) {
@@ -910,7 +924,7 @@ const API = {
   // 工具
   clamp, round, phase, circadian, melatoninTarget, dateKey, isNight,
   // 生物钟
-  normalizeRhythm, rhythmHour, rhythmSegments, rebaseRhythm,
+  normalizeRhythm, rhythmHour, rhythmSegments, rebaseRhythm, stateTag,
   // 状态
   defaultState, tick, decayBody, decayHormones, decayRelation, decayFear,
   // 情绪

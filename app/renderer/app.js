@@ -135,6 +135,8 @@ const settings = store.get('agentpet.settings', {
   // 生物钟：身体与褪黑素按这张表走；主动消息里的 {phase} 仍按真实钟点
   wakeHour: 6,
   sleepHour: 22,
+  // 每轮往系统提示里注入一行「当前状态：清醒」，模板来自 preset-emotion.md
+  injectEmotionState: true,
 });
 // 老版本存下来的设置里没有 scalePivot，补一个默认值（0 = 缩放时脚底不动）
 if (typeof settings.scalePivot !== 'number') settings.scalePivot = 0;
@@ -515,6 +517,7 @@ const el = {
   presetTime: $('#preset-time'),
   presetMemory: $('#preset-memory'),
   presetProactive: $('#preset-proactive'),
+  presetEmotion: $('#preset-emotion'),
   presetSpeakPath: $('#preset-speak-path'),
   presetTools: $('#preset-tools'),
   presetActions: $('#preset-actions'),
@@ -1830,6 +1833,8 @@ function warmEmotionClassifier() {
 async function loadEmotionTemplates() {
   const r = await readPresetText('readPresetProactive');
   emotionRuntime.proactiveTemplate = r.text || '';
+  const s = await readPresetText('readPresetEmotion');
+  emotionStateTemplateMd = s.text || '';
 }
 
 // 读取当前角色的情感档案；force=true 用于切角色 / 手动重载
@@ -2411,6 +2416,7 @@ function rhythmCardHtml() {
       <div class="rhythm-axis"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
       <div class="rhythm-strip" data-rhythm-strip>${rhythmStripHtml(r)}</div>
       <div data-rhythm-readout>${rhythmSummaryHtml(r)}</div>
+      <label class="emotion-field"><span>对话注入当前状态</span><input type="checkbox" data-em-setting="injectEmotionState"${settings.injectEmotionState !== false ? ' checked' : ''} /></label>
     </section>
   `;
 }
@@ -2591,6 +2597,10 @@ function applyEmotionSettingValue(key, raw) {
   }
   if (key === 'proactiveFloor') {
     settings.proactiveFloor = !!raw;
+    return;
+  }
+  if (key === 'injectEmotionState') {
+    settings.injectEmotionState = !!raw;
     return;
   }
   const n = Number(raw);
@@ -5226,7 +5236,18 @@ function charTemplate(text) {
   return String(text).replace(/\{\{char\}\}/g, name);
 }
 
-// 对话用的系统提示：人设 + 说话格式（来自 preset-speak.md） + 摘要 + 长程记忆 + ACTIONS + 真工具
+// 每轮一行的状态注入：文案在 preset-emotion.md（{state} 由引擎现算），
+// 只进 system prompt，不写进聊天记录，所以永远不会过期。
+function emotionStateBlock() {
+  if (settings.injectEmotionState === false) return '';
+  if (!emotionActive() || !emotionRuntime.state) return '';
+  const tpl = String(emotionStateTemplateMd || '').trim();
+  if (!tpl) return '';
+  const tag = E.stateTag(emotionRuntime.state, new Date(), emotionRhythm());
+  return E.fillTemplate(tpl, { state: tag }).trim();
+}
+
+// 对话用的系统提示：人设 + 说话格式（来自 preset-speak.md） + 摘要 + 长程记忆 + 状态 + ACTIONS + 真工具
 function buildChatMessages() {
   // play_action 被关掉（或内核停转）时连 ACTIONS 清单也一起收起：
   // 模型没有可用的动作工具，不该再看到一堆动作名。
@@ -5243,6 +5264,7 @@ function buildChatMessages() {
     charTemplate(speakFormatMd),
     summary ? `早前对话摘要：\n${summary}` : '',
     longMemoryContext.block,
+    emotionStateBlock(),
     charTemplate(actionsBlock),
     toolsPromptBlock(),
   ]
@@ -9624,11 +9646,14 @@ let personaMd = '';
 let speakFormatMd = '';
 let timeNoteMd = '';
 let memoryTemplateMd = '';
+// 每轮注入的状态行模板（{state} 为占位符），在预设页可编辑；开关在选项·生物钟
+let emotionStateTemplateMd = '';
 let presetPersonaDirty = false;
 let presetSpeakDirty = false;
 let presetTimeDirty = false;
 let presetMemoryDirty = false;
 let presetProactiveDirty = false;
+let presetEmotionDirty = false;
 
 // 预设页 TOOLS 区块：只展示 tools.config.json 里启用的真工具（只读，开关在「工具管理」）。
 // SPEAK / MEM_MARK 属于底层协议，不在此列。
@@ -9971,7 +9996,7 @@ async function loadPresetMemory() {
   }
 }
 
-// 情感注入模板 / 主动开口模板：同样来自本地 md，改文件或本页编辑后保存都生效
+// 情感注入模板 / 主动开口模板 / 每轮状态行：同样来自本地 md，改文件或本页编辑后保存都生效
 async function loadPresetProactive() {
   const r = await readPresetText('readPresetProactive');
   emotionRuntime.proactiveTemplate = r.text || '';
@@ -9981,12 +10006,22 @@ async function loadPresetProactive() {
   }
 }
 
+async function loadPresetEmotion() {
+  const r = await readPresetText('readPresetEmotion');
+  emotionStateTemplateMd = r.text || '';
+  if (!presetEmotionDirty && el.presetEmotion) {
+    el.presetEmotion.value = emotionStateTemplateMd;
+    lineNumbersFor(el.presetEmotion);
+  }
+}
+
 function renderPreset() {
   loadPresetPersona();
   loadPresetSpeak();
   loadPresetTime();
   loadPresetMemory();
   loadPresetProactive();
+  loadPresetEmotion();
   renderPresetActions();
   renderPresetTools();
 }
@@ -9997,6 +10032,7 @@ const presetInputs = [
   [el.presetTime, () => (presetTimeDirty = true)],
   [el.presetMemory, () => (presetMemoryDirty = true)],
   [el.presetProactive, () => (presetProactiveDirty = true)],
+  [el.presetEmotion, () => (presetEmotionDirty = true)],
 ];
 presetInputs.forEach(([node, markDirty]) => {
   if (!node) return;
@@ -10017,6 +10053,7 @@ $('#btn-save-all').onclick = async () => {
   timeNoteMd = el.presetTime.value;
   memoryTemplateMd = el.presetMemory.value;
   if (el.presetProactive) emotionRuntime.proactiveTemplate = el.presetProactive.value;
+  if (el.presetEmotion) emotionStateTemplateMd = el.presetEmotion.value;
   const jobs = [
     ['writePresetPersona', personaMd],
     ['writePresetSpeak', speakFormatMd],
@@ -10024,6 +10061,7 @@ $('#btn-save-all').onclick = async () => {
     ['writePresetMemory', memoryTemplateMd],
   ];
   if (el.presetProactive) jobs.push(['writePresetProactive', emotionRuntime.proactiveTemplate]);
+  if (el.presetEmotion) jobs.push(['writePresetEmotion', emotionStateTemplateMd]);
   let failed = '';
   for (const [fn, text] of jobs) {
     if (!window.petApi || !window.petApi[fn]) continue;
@@ -10039,12 +10077,13 @@ $('#btn-save-all').onclick = async () => {
   presetSpeakDirty = false;
   presetTimeDirty = false;
   presetMemoryDirty = false;
+  presetEmotionDirty = false;
   if (failed) {
     toast('提示词保存失败，详情见下方提示', 'warn');
     consoleLog('错误', `提示词保存失败：${failed}`);
     return;
   }
-  toast('提示词已保存（PROMPT / PERSONA / TIME / MEMORY / PROACTIVE / ACTIONS）', 'accent');
+  toast('提示词已保存（PROMPT / PERSONA / TIME / MEMORY / PROACTIVE / EMOTION / ACTIONS）', 'accent');
   consoleLog('系统', '提示词已保存到 si/app/preset-*.md');
 };
 
@@ -10055,6 +10094,7 @@ loadPresetSpeak();
 loadPresetPersona();
 loadPresetTime();
 loadPresetMemory();
+loadPresetEmotion();
 loadPresetActionsMd();
 
 // 工具管理页：重新读取磁盘上的 tools.config.json（手改 prompt / schema 后用它刷新）
