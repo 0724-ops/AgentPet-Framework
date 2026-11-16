@@ -5,7 +5,7 @@ import fs from 'node:fs';
 
 const src = fs.readFileSync(new URL('./context-window.js', import.meta.url), 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const { planContextWindow, pickTurnsByMood, MIN_CONTEXT_TURNS } = mod;
+const { planContextWindow, planHistoryWindow, pickTurnsByMood, MIN_CONTEXT_TURNS } = mod;
 
 test('窗口规划：100 轮、满权重 → 100 / 连续 65 / 补齐 35', () => {
   assert.deepEqual(planContextWindow(100, 1), { total: 100, keep: 65, fill: 35 });
@@ -41,6 +41,29 @@ test('窗口规划：可用 0 轮时返回空，不硬凑 1 轮', () => {
 
 test('少于 25 轮不启用拆分', () => {
   assert.equal(MIN_CONTEXT_TURNS, 25);
+});
+
+test('真实轮次：上限 60、只有 30 轮 → 按 30 × 0.84 算', () => {
+  // base=30 → total=25, fill=8, keep=17
+  assert.deepEqual(planHistoryWindow(60, 0.84, 30), { total: 25, keep: 17, fill: 8 });
+});
+
+test('真实轮次：MAX（100）不设上限，200 轮 × 0.84 → 168', () => {
+  assert.deepEqual(planHistoryWindow(100, 0.84, 200), { total: 168, keep: 110, fill: 58 });
+});
+
+test('真实轮次：非 MAX 先按上限截断，再乘权重', () => {
+  assert.deepEqual(planHistoryWindow(60, 0.84, 200), { total: 50, keep: 33, fill: 17 });
+});
+
+test('真实轮次：权重压满时等于全量，不产生补齐', () => {
+  assert.deepEqual(planHistoryWindow(100, 1, 200), { total: 200, keep: 130, fill: 70 });
+  assert.deepEqual(planHistoryWindow(60, 1, 60), { total: 60, keep: 39, fill: 21 });
+});
+
+test('真实轮次：没有对话时返回空', () => {
+  assert.deepEqual(planHistoryWindow(60, 0.84, 0), { total: 0, keep: 0, fill: 0 });
+  assert.deepEqual(planHistoryWindow(0, 0.84, 30), { total: 0, keep: 0, fill: 0 });
 });
 
 function turn(seq, hoursAgo, valence, intensity = 0.5) {

@@ -26,6 +26,18 @@ export function planContextWindow(limit, weight, fillRatio = CONTEXT_FILL_RATIO,
   return { total, keep: total - fill, fill };
 }
 
+// 结合真实对话量规划窗口：
+//   非 MAX：base = min(上限, 可注入轮数)
+//   MAX（100）：base = 可注入轮数，即「200 条就按 200 × 权重算」
+// 两种都先乘情绪权重，再按 65% / 35% 切开
+export function planHistoryWindow(limit, weight, available) {
+  const turns = Math.max(0, Math.floor(Number(limit) || 0));
+  const pool = Math.max(0, Math.floor(Number(available) || 0));
+  if (!turns || !pool) return { total: 0, keep: 0, fill: 0 };
+  const base = turns >= 100 ? pool : Math.min(turns, pool);
+  return planContextWindow(base, weight, CONTEXT_FILL_RATIO, base);
+}
+
 // turns: [{ seq, msgs }]，msgs 里可能带 mood: { valence, intensity }
 // 返回按 seq 升序挑出的轮（保持时间顺序）
 export function pickTurnsByMood(turns, count, nowValence, nowMs, opts = {}) {

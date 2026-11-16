@@ -13,7 +13,7 @@ import { parseCompressResult } from './compress-result.js';
 // 情感：数值引擎（由 index.html 的 classic script 挂到全局）+ 事件识别
 import { createEmotionClassifier } from '../emotion/classify.js';
 // 情绪化上下文：注入轮数 / 情绪补齐的纯计算（app/emotion/context-window.js）
-import { planContextWindow, pickTurnsByMood, MIN_CONTEXT_TURNS } from '../emotion/context-window.js';
+import { planHistoryWindow, pickTurnsByMood, MIN_CONTEXT_TURNS } from '../emotion/context-window.js';
 const E = (typeof window !== 'undefined' && window.AgentPetEmotionEngine)
   || (typeof globalThis !== 'undefined' && globalThis.AgentPetEmotionEngine);
 
@@ -2423,7 +2423,7 @@ function renderEmotionStatus() {
         <section class="emotion-card emotion-card--tight">
           <div class="emotion-card-head"><b>实时状态</b></div>
           <ul class="emotion-influences">${snap.influences.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
-          <div class="emotion-hint">${escapeHtml(emotionContextLine())}</div>
+          ${emotionContextLines().map((line) => `<div class="emotion-hint">${escapeHtml(line)}</div>`).join('')}
           <div class="emotion-hint">只影响她长时间待机时主动开口的语气，不写进普通对话</div>
         </section>
 
@@ -2794,17 +2794,26 @@ function initEmotionPanel() {
   bindEmotionEvents($('#emotion-params'));
 }
 
-// 面板「实时状态」里那一句：当前实际会发多少轮、其中多少由情绪挑
-function emotionContextLine() {
+// 面板「实时状态」里那几句：当前实际会发多少轮、多少由情绪挑、优先回忆哪些标签
+function emotionContextLines() {
   if (settings.emotionContext !== true) {
-    return `当前上下文窗口 ${settings.historyWindow} 轮（情绪化上下文未开启）`;
+    return [`当前上下文窗口 ${settings.historyWindow} 轮（情绪化上下文未开启）`];
   }
-  if (settings.historyWindow >= 100) return '当前上下文窗口为 MAX（全量发送，不参与情绪调度）';
   const plan = currentEmotionContextPlan();
   if (plan.available < MIN_CONTEXT_TURNS) {
-    return `当前只有 ${plan.available} 轮对话（不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送）`;
+    return [`当前只有 ${plan.available} 轮对话（不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送）`];
   }
-  return `当前上下文窗口 ${plan.total} 轮，其中 ${plan.fill} 轮由情绪决定`;
+  if (settings.emotionContextPick === false) {
+    return [`当前上下文窗口 ${plan.total} 轮（情绪一致性已关闭，全部连续）`];
+  }
+  if (plan.available <= plan.total) {
+    return [`当前上下文窗口 ${plan.total} 轮（全部为最近连续对话）`];
+  }
+  const lines = [`当前上下文窗口 ${plan.total} 轮，其中 ${plan.fill} 轮由情绪决定`];
+  lines.push(plan.labels.length
+    ? `优先回忆：${plan.labels.join(' · ')}`
+    : '优先回忆：暂无（旧对话还没有情绪标签）');
+  return lines;
 }
 
 // 「情绪化上下文」下方的实时说明：当前压力系数与预计发送轮数
@@ -2813,10 +2822,6 @@ function renderEmotionContextHint() {
   if (!el) return;
   if (settings.emotionContext !== true) {
     el.textContent = '关闭时：按「发送最近多少轮对话」原样发送连续窗口。';
-    return;
-  }
-  if (settings.historyWindow >= 100) {
-    el.textContent = 'MAX 模式全量发送，不参与情绪调度。';
     return;
   }
   const w = emotionContextWeight();
@@ -3261,15 +3266,14 @@ function pickHistoryMessages(list, limitTurns) {
   lastHistoryGapSeqs = new Set();
   const turns = Number(limitTurns);
   if (!Number.isFinite(turns) || turns <= 0) return [];
-  if (turns >= 100) return list.slice(); // MAX：全量发送，不参与调度
   if (settings.emotionContext !== true) return selectRecentTurns(list, turns);
 
   const all = splitDialogTurns(list);
   // 轮次太少不拆：拆了也只是把有限语境切碎，还会平白多出一堆时间戳
   if (all.length < MIN_CONTEXT_TURNS) return selectRecentTurns(list, turns);
 
-  const plan = planContextWindow(turns, emotionContextWeight(), undefined, all.length);
-  // 关掉情绪一致性，或可用轮次不足以铺满补齐段 → 就是纯连续窗口
+  const plan = planHistoryWindow(turns, emotionContextWeight(), all.length);
+  // 关掉情绪一致性，或权重压满、没有真正跳过对话 → 纯连续窗口
   if (!plan.fill || all.length <= plan.total || settings.emotionContextPick === false) {
     return selectRecentTurns(list, plan.total);
   }
@@ -3287,13 +3291,28 @@ function pickHistoryMessages(list, limitTurns) {
   return [...picked.flatMap((t) => t.msgs), ...recent.flatMap((t) => t.msgs)];
 }
 
-// 面板用：当前窗口规划（含「实际可注入多少轮」）
+// 面板用：当前窗口规划（含「实际可注入多少轮」与优先回忆的情绪标签）
 function currentEmotionContextPlan() {
   const cutoff = chatCutoffSeq();
   const after = chatState.messages.filter((m) => !m.streaming && ensureSeq(m) > cutoff);
-  const available = splitDialogTurns(after).length;
-  const plan = planContextWindow(settings.historyWindow, emotionContextWeight(), undefined, available);
-  return { ...plan, available };
+  const turns = splitDialogTurns(after);
+  const available = turns.length;
+  const plan = planHistoryWindow(settings.historyWindow, emotionContextWeight(), available);
+  const labels = [];
+  if (settings.emotionContextPick !== false && plan.fill && available > plan.total) {
+    const older = turns.slice(0, available - plan.keep);
+    const picked = pickTurnsByMood(
+      older,
+      plan.fill,
+      emotionRuntime.state ? E.feel(emotionRuntime.state).valence : 50,
+      Date.now(),
+    );
+    picked.forEach((t) => t.msgs.forEach((m) => {
+      const text = m && m.mood && m.mood.text;
+      if (text) labels.push(String(text));
+    }));
+  }
+  return { ...plan, available, labels: [...new Set(labels)].slice(0, 4) };
 }
 
 // 非连续拼接可能出现两条同角色的普通消息，合并成一条，保证交替
