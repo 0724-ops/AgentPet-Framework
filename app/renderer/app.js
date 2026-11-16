@@ -12,6 +12,8 @@ import { createPseudoToolParser, sanitizePseudoText } from './pseudo-tools.js';
 import { parseCompressResult } from './compress-result.js';
 // 情感：数值引擎（由 index.html 的 classic script 挂到全局）+ 事件识别
 import { createEmotionClassifier } from '../emotion/classify.js';
+// 情绪化上下文：注入轮数 / 情绪补齐的纯计算（app/emotion/context-window.js）
+import { planContextWindow, pickTurnsByMood, MIN_CONTEXT_TURNS } from '../emotion/context-window.js';
 const E = (typeof window !== 'undefined' && window.AgentPetEmotionEngine)
   || (typeof globalThis !== 'undefined' && globalThis.AgentPetEmotionEngine);
 
@@ -141,6 +143,10 @@ const settings = store.get('agentpet.settings', {
   traitSpan: 20,
   // 性格自适应：每轮语气是否慢慢沉淀进底色（影响情绪与说话方式），默认关
   traitAdapt: false,
+  // 情绪化上下文：按当前压力决定注入多少轮（上限仍是 historyWindow），默认关
+  emotionContext: false,
+  // 情绪一致性：把剩下的 35% 换成「情绪相近、印象更深」的旧对话，默认开
+  emotionContextPick: true,
 });
 // 老版本存下来的设置里没有 scalePivot，补一个默认值（0 = 缩放时脚底不动）
 if (typeof settings.scalePivot !== 'number') settings.scalePivot = 0;
@@ -1930,7 +1936,7 @@ async function emotionForTurn(opts) {
 
 // 她的自述情绪（<<<MOOD:...>>>）：只用来结算状态与统计，用完即丢。
 // 不扫正文、不读用户的话；没有 MOOD 就这一轮不结算，面板里留一条记录方便排查。
-async function emotionFromMood(mood, visibleText) {
+async function emotionFromMood(mood, visibleText, msg) {
   if (!emotionActive()) return;
   const tag = String(mood || '').trim().slice(0, 60);
   const reply = String(visibleText || '').trim().slice(0, 200);
@@ -1972,6 +1978,17 @@ async function emotionFromMood(mood, visibleText) {
   E.noteReplyStats(s, reply || tag, kinds, valence);
   // 开关打开：这一轮的语气开始沉淀进底色，之后 feel() / 激素增益都会跟着变
   if (settings.traitAdapt) E.adaptPersonality(s, reply || tag, kinds, valence, traitAdaptRate());
+  // 给这条回复留一份情绪标签，供「情绪化上下文」后续按情绪挑旧对话（不进 API 历史）
+  if (msg && typeof msg === 'object') {
+    const hit = hitsOut[0] || null;
+    msg.mood = {
+      kind: hit ? hit.kind : '',
+      text: hit ? hit.text || '' : '',
+      intensity: hit ? Number((hit.intensity * 0.5).toFixed(3)) : 0,
+      valence: Math.round(valence),
+    };
+    saveChatSession();
+  }
   saveEmotionState(false);
   renderEmotionPanel();
 }
@@ -2406,6 +2423,7 @@ function renderEmotionStatus() {
         <section class="emotion-card emotion-card--tight">
           <div class="emotion-card-head"><b>实时状态</b></div>
           <ul class="emotion-influences">${snap.influences.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
+          <div class="emotion-hint">${escapeHtml(emotionContextLine())}</div>
           <div class="emotion-hint">只影响她长时间待机时主动开口的语气，不写进普通对话</div>
         </section>
 
@@ -2742,9 +2760,75 @@ function initEmotionPanel() {
   const save = $('#btn-emotion-save');
   if (save) save.addEventListener('click', () => void applyEmotionSettings());
 
+  // 情绪化上下文：总开关 + 情绪一致性；关掉总开关时下面一行置灰
+  const ctxToggle = $('#set-emotion-context');
+  const ctxPick = $('#set-emotion-context-pick');
+  const syncContextUi = () => {
+    if (ctxToggle) ctxToggle.checked = settings.emotionContext === true;
+    if (ctxPick) {
+      ctxPick.checked = settings.emotionContextPick !== false;
+      ctxPick.disabled = settings.emotionContext !== true;
+      const row = ctxPick.closest ? ctxPick.closest('.setting-row') : null;
+      if (row) row.classList.toggle('is-disabled', settings.emotionContext !== true);
+    }
+    renderEmotionContextHint();
+  };
+  if (ctxToggle) {
+    ctxToggle.addEventListener('change', () => {
+      settings.emotionContext = !!ctxToggle.checked;
+      store.set('agentpet.settings', settings);
+      syncContextUi();
+    });
+  }
+  if (ctxPick) {
+    ctxPick.addEventListener('change', () => {
+      settings.emotionContextPick = !!ctxPick.checked;
+      store.set('agentpet.settings', settings);
+      syncContextUi();
+    });
+  }
+  syncContextUi();
+
   // 事件委托：面板每次重绘都会换 DOM，不能逐个绑定
   bindEmotionEvents($('#emotion-root'));
   bindEmotionEvents($('#emotion-params'));
+}
+
+// 面板「实时状态」里那一句：当前实际会发多少轮、其中多少由情绪挑
+function emotionContextLine() {
+  if (settings.emotionContext !== true) {
+    return `当前上下文窗口 ${settings.historyWindow} 轮（情绪化上下文未开启）`;
+  }
+  if (settings.historyWindow >= 100) return '当前上下文窗口为 MAX（全量发送，不参与情绪调度）';
+  const plan = currentEmotionContextPlan();
+  if (plan.available < MIN_CONTEXT_TURNS) {
+    return `当前只有 ${plan.available} 轮对话（不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送）`;
+  }
+  return `当前上下文窗口 ${plan.total} 轮，其中 ${plan.fill} 轮由情绪决定`;
+}
+
+// 「情绪化上下文」下方的实时说明：当前压力系数与预计发送轮数
+function renderEmotionContextHint() {
+  const el = $('#emotion-context-hint');
+  if (!el) return;
+  if (settings.emotionContext !== true) {
+    el.textContent = '关闭时：按「发送最近多少轮对话」原样发送连续窗口。';
+    return;
+  }
+  if (settings.historyWindow >= 100) {
+    el.textContent = 'MAX 模式全量发送，不参与情绪调度。';
+    return;
+  }
+  const w = emotionContextWeight();
+  const plan = currentEmotionContextPlan();
+  if (plan.available < MIN_CONTEXT_TURNS) {
+    el.textContent = `当前只有 ${plan.available} 轮对话，不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送。`;
+    return;
+  }
+  const parts = settings.emotionContextPick !== false
+    ? `连续 ${plan.keep} + 情绪补齐 ${plan.fill}`
+    : `全部连续 ${plan.total}`;
+  el.textContent = `当前压力系数 ${Math.round(w * 100)}%：本次最多 ${plan.total} 轮（${parts}）。`;
 }
 
 function bindEmotionEvents(root) {
@@ -3136,6 +3220,98 @@ function selectRecentTurns(messages, turns) {
   return all.slice(start);
 }
 
+// ---- 情绪化上下文：按压力决定注入轮数，把一部分换成情绪相近的旧对话 ----
+let lastHistoryHadGaps = false;
+let lastHistoryGapSeqs = new Set();
+
+// 压力越高，注入越接近上限：平常 0.8，紧张时 1.0（上限仍是 historyWindow）
+function emotionContextWeight() {
+  if (settings.emotionContext !== true) return 1;
+  if (!emotionActive() || !emotionRuntime.state) return 1;
+  const h = emotionRuntime.state.hormones || {};
+  const stress = Math.min(1, Math.max(0, ((Number(h.cortisol) || 0) + (Number(h.adrenaline) || 0)) / 160));
+  return 0.8 + 0.2 * stress;
+}
+
+// 按「用户消息」切轮：每条 user 开启一轮，后面的 ai 归属该轮
+function splitDialogTurns(list) {
+  const turns = [];
+  let cur = null;
+  (list || []).forEach((m) => {
+    if (m.role === 'user') {
+      cur = { seq: ensureSeq(m), msgs: [m] };
+      turns.push(cur);
+    } else if (m.role === 'ai' && cur) {
+      cur.msgs.push(m);
+    }
+  });
+  return turns;
+}
+
+// 补齐段来自更早的对话，加个短时间戳，模型才分得清是三天前还是刚才
+function fmtHistoryStamp(ts) {
+  const d = new Date(Number(ts) || Date.now());
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 选出本次要发的消息：情绪补齐段在前、连续段在后，保持时间顺序
+function pickHistoryMessages(list, limitTurns) {
+  lastHistoryHadGaps = false;
+  lastHistoryGapSeqs = new Set();
+  const turns = Number(limitTurns);
+  if (!Number.isFinite(turns) || turns <= 0) return [];
+  if (turns >= 100) return list.slice(); // MAX：全量发送，不参与调度
+  if (settings.emotionContext !== true) return selectRecentTurns(list, turns);
+
+  const all = splitDialogTurns(list);
+  // 轮次太少不拆：拆了也只是把有限语境切碎，还会平白多出一堆时间戳
+  if (all.length < MIN_CONTEXT_TURNS) return selectRecentTurns(list, turns);
+
+  const plan = planContextWindow(turns, emotionContextWeight(), undefined, all.length);
+  // 关掉情绪一致性，或可用轮次不足以铺满补齐段 → 就是纯连续窗口
+  if (!plan.fill || all.length <= plan.total || settings.emotionContextPick === false) {
+    return selectRecentTurns(list, plan.total);
+  }
+  const recent = all.slice(-plan.keep);
+  const older = all.slice(0, all.length - plan.keep);
+  const picked = pickTurnsByMood(
+    older,
+    plan.fill,
+    emotionRuntime.state ? E.feel(emotionRuntime.state).valence : 50,
+    Date.now(),
+  );
+  if (!picked.length) return selectRecentTurns(list, plan.total);
+  lastHistoryHadGaps = true;
+  picked.forEach((t) => t.msgs.forEach((m) => lastHistoryGapSeqs.add(ensureSeq(m))));
+  return [...picked.flatMap((t) => t.msgs), ...recent.flatMap((t) => t.msgs)];
+}
+
+// 面板用：当前窗口规划（含「实际可注入多少轮」）
+function currentEmotionContextPlan() {
+  const cutoff = chatCutoffSeq();
+  const after = chatState.messages.filter((m) => !m.streaming && ensureSeq(m) > cutoff);
+  const available = splitDialogTurns(after).length;
+  const plan = planContextWindow(settings.historyWindow, emotionContextWeight(), undefined, available);
+  return { ...plan, available };
+}
+
+// 非连续拼接可能出现两条同角色的普通消息，合并成一条，保证交替
+function pushApiHistory(out, item) {
+  const last = out[out.length - 1];
+  const mergeable = last
+    && last.role === item.role
+    && !last.tool_calls
+    && (item.role === 'user' || item.role === 'assistant')
+    && typeof last.content === 'string'
+    && typeof item.content === 'string';
+  if (mergeable) {
+    last.content = `${last.content}\n${item.content}`;
+    return;
+  }
+  out.push(item);
+}
+
 // 把壳层消息重建为 OpenAI 历史：assistant 的 tool_calls 和 tool 结果都带上，
 // 模型才能在后续请求里看到自己调用过什么工具、拿到了什么结果。
 function buildApiHistory(limitTurns) {
@@ -3144,13 +3320,15 @@ function buildApiHistory(limitTurns) {
     if (m.streaming) return false;
     return ensureSeq(m) > cutoffSeq;
   });
-  const picked = selectRecentTurns(afterCutoff, limitTurns);
+  const picked = pickHistoryMessages(afterCutoff, limitTurns);
   const out = [];
   picked.forEach((m) => {
     if (m.role === 'user') {
       const text = String(m.text || '').trim();
+      // 挑出来的旧对话带一个短时间戳，连续段保持原样
+      const stamp = lastHistoryGapSeqs.has(ensureSeq(m)) ? `[${fmtHistoryStamp(m.ts)}] ` : '';
       // 引用的会话 / 笔记全文在这里补上，索引仍只存紧凑标记
-      if (text) out.push({ role: 'user', content: text + buildRefBlock(m.refs) });
+      if (text) pushApiHistory(out, { role: 'user', content: stamp + text + buildRefBlock(m.refs) });
       return;
     }
     if (m.role !== 'ai') return; // role:'sys' 之类的壳层提示不发给模型
@@ -3158,7 +3336,7 @@ function buildApiHistory(limitTurns) {
     const text = String(m.text || '');
     if (!text.trim() && !calls.length) return;
     if (!calls.length) {
-      out.push({ role: 'assistant', content: text });
+      pushApiHistory(out, { role: 'assistant', content: text });
       return;
     }
     // 历史里的 tool_call_id 现场生成即可：同一条消息内保持唯一
@@ -3176,11 +3354,16 @@ function buildApiHistory(limitTurns) {
       out.push({ role: 'tool', tool_call_id: ids[i], content: String(t.result == null ? '' : t.result) });
     });
   });
+  // 补齐段若以助手消息开头（比如那条用户消息是空的），整个历史得从用户消息起头
+  const firstUser = out.findIndex((x) => x.role === 'user');
+  if (firstUser > 0) out.splice(0, firstUser);
   return out;
 }
 
 // 上次请求的起点 seq（按当前 historyWindow 重算；请求组装后到调用前状态没变，可直接用）
 function requestStartSeq() {
+  // 情绪化上下文会跳过中间的对话，前缀回放不再覆盖全部待压缩内容
+  if (lastHistoryHadGaps) return 0;
   const cutoff = chatCutoffSeq();
   const after = chatState.messages.filter((m) => !m.streaming && ensureSeq(m) > cutoff);
   const picked = selectRecentTurns(after, settings.historyWindow);
@@ -5619,7 +5802,7 @@ async function runAgent() {
           autoReadReply(speakSourceOf(msg), { raw: msg.text, speak: msg.speakText });
           // 情绪只看她自述的 MOOD，且这条标记不进上下文、用完即丢
           const moods = (parsed && parsed.moods) || [];
-          void emotionFromMood(moods.length ? moods[moods.length - 1] : '', msg.text);
+          void emotionFromMood(moods.length ? moods[moods.length - 1] : '', msg.text, msg);
         }
         return;
       }
@@ -11527,6 +11710,7 @@ if (historyInput) {
         warn.hidden = true;
       }
     }
+    renderEmotionContextHint();
   };
   historyInput.value = String(settings.historyWindow);
   syncHistoryUi();
