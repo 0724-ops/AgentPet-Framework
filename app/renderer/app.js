@@ -139,10 +139,11 @@ const settings = store.get('agentpet.settings', {
   sleepHour: 22,
   // 每轮往系统提示里注入一行「当前状态：清醒」，模板来自 preset-emotion.md
   injectEmotionState: true,
-  // 状态标签映射表：困意 ≥ min 就用这条文案；用户可在选项页改（默认三档）
+  // 状态标签映射表：困意 ≥ min 就用这条文案；用户可在选项页改（默认四档）
   stateTiers: [
     { min: 80, label: '很困' },
-    { min: 65, label: '有点困' },
+    { min: 65, label: '比较困' },
+    { min: 50, label: '有点困' },
     { min: 0, label: '清醒' },
   ],
   // 雷达先验强度：越小学单条回复影响越大，默认 20 条
@@ -2667,7 +2668,7 @@ function stateTiersCardHtml() {
         ${rows}
         <button class="btn-ghost-sm" data-em-action="tier-add" type="button">添加一档</button>
       </details>
-      <div class="emotion-hint">每轮注入的状态词取自这张表：困意达到阈值就用该档文案，低于最低档也归最低档；文案留空或整表为空时用默认三档。起床 40 分钟内固定显示「刚睡醒」。</div>
+      <div class="emotion-hint">每轮注入的状态词取自这张表：困意达到阈值就用该档文案，低于最低档也归最低档；文案留空或整表为空时用默认四档。起床 40 分钟内固定显示「刚睡醒」。</div>
     </section>
   `;
 }

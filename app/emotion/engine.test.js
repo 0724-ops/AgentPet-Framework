@@ -451,14 +451,16 @@ test('生物钟：状态标签按困意分档（睡眠段不再特殊）', () =>
   const s = fresh();
   // 默认 06:00 起床 / 22:00 入睡
   s.body.sleepiness = 72;
-  assert.strictEqual(E.stateTag(s, at(22, 59), undefined), '有点困');
+  assert.strictEqual(E.stateTag(s, at(22, 59), undefined), '比较困');
   s.body.sleepiness = 85;
   assert.strictEqual(E.stateTag(s, at(2, 0), undefined), '很困');
   assert.strictEqual(E.stateTag(s, at(6, 20), undefined), '刚睡醒');
   s.body.sleepiness = 30;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '清醒');
-  s.body.sleepiness = 70;
+  s.body.sleepiness = 55;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '有点困');
+  s.body.sleepiness = 70;
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '比较困');
   s.body.sleepiness = 85;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '很困');
   // 换作息后只看起床时间：18:00 起床 / 14:00 入睡，真实 14:30 已过起床 40 分钟
@@ -483,7 +485,7 @@ test('生物钟：状态标签映射表可改阈值与文案', () => {
   s.body.sleepiness = 0;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined, [{ min: 60, label: '困' }]), '困');
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined, []), '清醒');
-  assert.deepStrictEqual(E.normalizeTiers(undefined).map((t) => t.label), ['很困', '有点困', '清醒']);
+  assert.deepStrictEqual(E.normalizeTiers(undefined).map((t) => t.label), ['很困', '比较困', '有点困', '清醒']);
 });
 
 

@@ -238,7 +238,8 @@ function rebaseRhythm(s, now, rhythm) {
 // 困意分档表：用户可在选项页改阈值与文案，这里只是默认值（从高到低）
 const STATE_TIERS = [
   { min: 80, label: '很困' },
-  { min: 65, label: '有点困' },
+  { min: 65, label: '比较困' },
+  { min: 50, label: '有点困' },
   { min: 0, label: '清醒' },
 ];
 
