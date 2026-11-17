@@ -3196,6 +3196,15 @@ function registerIpc() {
       return { ok: false, items: [], error: String(err && err.message ? err.message : err) };
     }
   });
+  // 重置别名编号：把现有条目按旧顺序压紧成 1..N，返回 old → new 供渲染层改写历史
+  ipcMain.handle('image:alias-reset', () => {
+    try {
+      const mapping = imageAlias.reset();
+      return { ok: true, mapping };
+    } catch (err) {
+      return { ok: false, mapping: {}, error: String(err && err.message ? err.message : err) };
+    }
+  });
   // 剪贴板截图没有磁盘路径：先落盘，后续流程与拖入文件一致
   ipcMain.handle('image:save-temp', (_e, payload) => {
     try {

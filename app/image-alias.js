@@ -241,6 +241,28 @@ function createImageAlias({ dir, maxItems = MAX_ITEMS, maxAgeMs = MAX_AGE_MS, lo
     },
 
     gc: gcItems,
+
+    // 重置编号：把现有别名按旧编号压紧成 1..N（保留映射），返回 old → new 供上层改写历史
+    reset() {
+      const ordered = [...items.keys()]
+        .map((alias) => ({ alias, n: Number(alias.replace(/\D/g, '')) }))
+        .sort((a, b) => a.n - b.n);
+      const mapping = {};
+      const nextItems = new Map();
+      ordered.forEach(({ alias }, i) => {
+        const to = `[image_${i + 1}]`;
+        if (to !== alias) mapping[alias] = to;
+        nextItems.set(to, items.get(alias));
+      });
+      items.clear();
+      for (const [alias, item] of nextItems) items.set(alias, item);
+      counter = items.size + 1;
+      rebuildIndex();
+      dirty = true;
+      persist();
+      return mapping;
+    },
+
     file,
   };
 }

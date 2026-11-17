@@ -128,6 +128,8 @@ contextBridge.exposeInMainWorld('petApi', {
   imageAliasText: (text, options) => ipcRenderer.invoke('image:alias-text', text, options),
   // @ 引用面板：最近用过的图片
   imageAliasList: (limit) => ipcRenderer.invoke('image:alias-list', limit),
+  // 重置图片别名编号（从 [image_1] 重新开始）
+  imageAliasReset: () => ipcRenderer.invoke('image:alias-reset'),
 
   // 应用配置（应用名 / 版本 / 角色 / 数据根）：主进程装配，渲染层不再直接读配置文件
   appConfig: () => ipcRenderer.invoke('app:config'),

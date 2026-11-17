@@ -485,6 +485,10 @@
               <div><b>图片读取权限</b><span>关闭时，模型只能读取本会话里你拖入或手动输入过的图片路径；开启后允许读取任意存在的图片（png / jpg / webp / gif / bmp，单张不超过 20MB）</span></div>
               <input type="checkbox" id="set-image-read" />
             </label>
+            <div class="setting-row">
+              <div><b>图片别名编号</b><span>对话里的图片以 [image_N] 出现，编号只增不减。重置会把现有条目压紧成从 1 开始的连续号码，并同步改写当前会话里的引用</span></div>
+              <button class="btn-ghost-sm" id="btn-reset-image-alias" type="button">重置编号</button>
+            </div>
           </div>
 
           <!-- 模型 API -->

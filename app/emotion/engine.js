@@ -235,18 +235,44 @@ function rebaseRhythm(s, now, rhythm) {
   return s;
 }
 
+// 困意分档表：用户可在选项页改阈值与文案，这里只是默认值（从高到低）
+const STATE_TIERS = [
+  { min: 80, label: '很困' },
+  { min: 65, label: '有点困' },
+  { min: 0, label: '清醒' },
+];
+
+// 用户改过的表可能缺项 / 顺序乱 / 文案为空，这里统一整理：按阈值从高到低，至少保留一条
+function normalizeTiers(tiers) {
+  const src = Array.isArray(tiers) ? tiers : [];
+  const out = [];
+  for (const t of src) {
+    if (!t || typeof t !== 'object') continue;
+    const min = Number(t.min);
+    const label = typeof t.label === 'string' ? t.label.trim() : '';
+    if (!Number.isFinite(min) || !label) continue;
+    out.push({ min: clamp(Math.round(min), 0, 100), label: label.slice(0, 8) });
+  }
+  if (!out.length) return STATE_TIERS.map((t) => ({ ...t }));
+  out.sort((a, b) => b.min - a.min);
+  return out;
+}
+
 // 每轮注入的一行状态：只给词，不给数值，也不带行为建议。
-// 真实时间落在睡眠段 → 刚被叫醒；起床 40 分钟内 → 刚睡醒；其余按困意分档。
-function stateTag(s, now, rhythm) {
+// 起床 40 分钟内 → 刚睡醒；其余一律按困意查映射表（睡眠段不再特殊，
+// 半夜聊天本来就该显示多困，而不是永远「刚被叫醒」）。
+function stateTag(s, now, rhythm, tiers) {
   const r = normalizeRhythm(rhythm);
   const d = (clockHoursOf(now) - r.wake + 24) % 24;
-  if (d >= r.wakeLen) return '刚被叫醒';
   if (d < 2 / 3) return '刚睡醒';
+  const list = normalizeTiers(tiers);
   const sleepiness = Number(s && s.body ? s.body.sleepiness : NaN);
-  if (!Number.isFinite(sleepiness)) return '清醒';
-  if (sleepiness >= 80) return '很困';
-  if (sleepiness >= 65) return '有点困';
-  return '清醒';
+  if (!Number.isFinite(sleepiness)) return list[list.length - 1].label;
+  for (const t of list) {
+    if (sleepiness >= t.min) return t.label;
+  }
+  // 低于最低一档也归到最低那档，保证总有词可用
+  return list[list.length - 1].label;
 }
 
 // ---------------------------------------------------------------- 默认状态
@@ -954,7 +980,8 @@ const API = {
   // 工具
   clamp, round, phase, circadian, melatoninTarget, dateKey, isNight,
   // 生物钟
-  normalizeRhythm, rhythmHour, rhythmSegments, rebaseRhythm, stateTag,
+  normalizeRhythm, rhythmHour, rhythmSegments, rebaseRhythm,
+  stateTag, STATE_TIERS, normalizeTiers,
   // 状态
   defaultState, tick, decayBody, decayHormones, decayRelation, decayFear,
   // 情绪

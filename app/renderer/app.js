@@ -139,6 +139,12 @@ const settings = store.get('agentpet.settings', {
   sleepHour: 22,
   // 每轮往系统提示里注入一行「当前状态：清醒」，模板来自 preset-emotion.md
   injectEmotionState: true,
+  // 状态标签映射表：困意 ≥ min 就用这条文案；用户可在选项页改（默认三档）
+  stateTiers: [
+    { min: 80, label: '很困' },
+    { min: 65, label: '有点困' },
+    { min: 0, label: '清醒' },
+  ],
   // 雷达先验强度：越小学单条回复影响越大，默认 20 条
   traitSpan: 20,
   // 性格自适应：每轮语气是否慢慢沉淀进底色（影响情绪与说话方式），默认关
@@ -269,6 +275,8 @@ if (!Number.isFinite(settings.sleepHour)) settings.sleepHour = 22;
     settings.sleepHour = rhythm.sleep;
   }
 }
+// 状态标签映射表：老版本没有这个键就补默认；存坏的表在这里整理回合法形态
+settings.stateTiers = E.normalizeTiers(settings.stateTiers);
 // 一次性迁移：1.3.0 预览版把 webgpu 当默认值存进过 localStorage，这里统一改回 webgl；
 // 用户之后在设置页手动切到 WebGPU（实验性）后不会再被改回来。
 if (!store.get('agentpet.backendDefaultV2', false)) {
@@ -2631,6 +2639,39 @@ document.addEventListener('mouseup', () => {
 });
 
 // 选项页：主动消息的额度摘要 + 全部参数
+// 状态标签映射表默认折叠；展开状态放内存，面板重绘后保持
+let emotionTiersOpen = false;
+
+// 映射表卡片：困意 ≥ 阈值就用对应文案，从上到下一档一条
+function stateTiersCardHtml() {
+  const tiers = Array.isArray(settings.stateTiers) && settings.stateTiers.length
+    ? settings.stateTiers
+    : E.STATE_TIERS;
+  const nowTag = emotionRuntime.state
+    ? E.stateTag(emotionRuntime.state, new Date(), emotionRhythm(), tiers)
+    : '—';
+  const rows = tiers
+    .map((t, i) => `
+      <div class="emotion-tier-row">
+        <input type="number" min="0" max="100" step="1" value="${escapeHtml(String(t.min))}" data-tier-min="${i}" />
+        <input type="text" maxlength="8" value="${escapeHtml(t.label)}" data-tier-label="${i}" />
+        <button class="btn-ghost-sm" data-em-action="tier-del" data-tier-index="${i}" type="button">删除</button>
+      </div>`)
+    .join('');
+  return `
+    <section class="emotion-card emotion-param-card">
+      <div class="emotion-card-head"><b>状态标签</b><span class="emotion-hint">当前：<span data-tier-now>${escapeHtml(nowTag)}</span></span></div>
+      <details class="emotion-tiers" data-tier-fold${emotionTiersOpen ? ' open' : ''}>
+        <summary>按困意分档 · ${tiers.length} 档</summary>
+        <div class="emotion-tier-head"><span>困意 ≥</span><span>文案</span><span></span></div>
+        ${rows}
+        <button class="btn-ghost-sm" data-em-action="tier-add" type="button">添加一档</button>
+      </details>
+      <div class="emotion-hint">每轮注入的状态词取自这张表：困意达到阈值就用该档文案，低于最低档也归最低档；文案留空或整表为空时用默认三档。起床 40 分钟内固定显示「刚睡醒」。</div>
+    </section>
+  `;
+}
+
 function renderEmotionParams() {
   const root = $('#emotion-params');
   if (!root || rhythmDrag.el || emotionFocusBlocked(root)) return;
@@ -2705,6 +2746,8 @@ function renderEmotionParams() {
       </label>
       <div class="emotion-hint">越靠左，雷达更快跟上、性格改写得也更快；只影响展示与自适应，不参与主动开口判定。</div>
     </section>
+
+    ${stateTiersCardHtml()}
 
     <div class="emotion-actions">
       <button class="btn-ghost-sm" data-em-action="reset">重置状态</button>
@@ -2836,12 +2879,42 @@ function bindEmotionEvents(root) {
   root.addEventListener('change', (e) => {
     const t = e.target;
     if (!t || !t.dataset) return;
+    // 状态标签映射表：就地改 settings 后直接落盘，不重绘面板（否则输入框会被换掉）
+    if (t.dataset.tierMin !== undefined || t.dataset.tierLabel !== undefined) {
+      const tiers = Array.isArray(settings.stateTiers) ? settings.stateTiers.slice() : [];
+      const isMin = t.dataset.tierMin !== undefined;
+      const i = Number(isMin ? t.dataset.tierMin : t.dataset.tierLabel);
+      if (!Number.isInteger(i) || !tiers[i]) return;
+      if (isMin) {
+        const n = Math.max(0, Math.min(100, Math.round(Number(t.value) || 0)));
+        tiers[i] = { ...tiers[i], min: n };
+        t.value = String(n);
+      } else {
+        tiers[i] = { ...tiers[i], label: String(t.value).trim().slice(0, 8) };
+        t.value = tiers[i].label;
+      }
+      settings.stateTiers = tiers;
+      store.set('agentpet.settings', settings);
+      // 标题旁的「当前」跟着变，免得改完文案看不到效果
+      const out = root.querySelector('[data-tier-now]');
+      if (out) {
+        out.textContent = emotionRuntime.state
+          ? E.stateTag(emotionRuntime.state, new Date(), emotionRhythm(), tiers)
+          : '—';
+      }
+      return;
+    }
     const key = t.dataset.emSetting;
     if (!key) return;
     applyEmotionSettingValue(key, t.type === 'checkbox' ? t.checked : t.value);
     if (t.blur) t.blur();
     void applyEmotionSettings();
   });
+  // details 的展开事件不冒泡，用捕获阶段记住状态
+  root.addEventListener('toggle', (e) => {
+    const t = e.target;
+    if (t && t.dataset && t.dataset.tierFold !== undefined) emotionTiersOpen = !!t.open;
+  }, true);
   root.addEventListener('click', (e) => {
     const view = e.target && e.target.closest ? e.target.closest('[data-em-view]') : null;
     if (view) {
@@ -2854,6 +2927,24 @@ function bindEmotionEvents(root) {
     if (!t) return;
     const action = t.dataset.emAction;
     if (action === 'reset') void resetEmotionState();
+    else if (action === 'tier-add') {
+      const tiers = Array.isArray(settings.stateTiers) ? settings.stateTiers.slice() : [];
+      tiers.push({ min: 50, label: '' });
+      settings.stateTiers = tiers;
+      store.set('agentpet.settings', settings);
+      emotionTiersOpen = true;
+      renderEmotionPanel();
+    }
+    else if (action === 'tier-del') {
+      const tiers = Array.isArray(settings.stateTiers) ? settings.stateTiers.slice() : [];
+      const i = Number(t.dataset.tierIndex);
+      // 至少留一档，全删了就没有词可注入
+      if (tiers.length > 1 && Number.isInteger(i)) tiers.splice(i, 1);
+      settings.stateTiers = tiers;
+      store.set('agentpet.settings', settings);
+      emotionTiersOpen = true;
+      renderEmotionPanel();
+    }
     else if (action === 'rhythm-reset') {
       settings.wakeHour = 6;
       settings.sleepHour = 22;
@@ -5565,7 +5656,7 @@ function emotionStateBlock() {
   if (!emotionActive() || !emotionRuntime.state) return '';
   const tpl = String(emotionStateTemplateMd || '').trim();
   if (!tpl) return '';
-  const tag = E.stateTag(emotionRuntime.state, new Date(), emotionRhythm());
+  const tag = E.stateTag(emotionRuntime.state, new Date(), emotionRhythm(), settings.stateTiers);
   return E.fillTemplate(tpl, { state: tag }).trim();
 }
 
@@ -6120,7 +6211,17 @@ async function aliasizeMessages(messages) {
   const onlyPaths = sessionImagePaths();
   for (const m of messages) {
     if (!m || m.role === 'system' || typeof m.content !== 'string' || !m.content) continue;
-    m.content = await aliasizeForModel(m.content, m.role === 'user' ? { bare: true, onlyPaths } : { bare: true });
+    // 用户消息只替换本会话出现过的路径，但本条消息自己带进来的图片必须算数：
+    // 新贴的图在 chatState 里可能还没落定，漏掉就会把裸路径直接发给模型
+    let own = onlyPaths;
+    if (m.role === 'user') {
+      own = [...onlyPaths];
+      for (const hit of m.content.matchAll(IMAGE_PATH_REGEX)) {
+        const p = hit[0].trim();
+        if (!onlyPaths.includes(p)) own.push(p);
+      }
+    }
+    m.content = await aliasizeForModel(m.content, m.role === 'user' ? { bare: true, onlyPaths: own } : { bare: true });
   }
   return messages;
 }
@@ -11841,6 +11942,49 @@ if (imageReadToggle) {
     settings.imageReadPerm = imageReadToggle.checked;
     store.set('agentpet.settings', settings);
     toast(settings.imageReadPerm ? '已允许读取任意图片路径' : '仅允许读取本会话出现过的图片');
+  };
+}
+
+// 重置图片别名编号：主进程把表压紧成 1..N，这里同步改写当前会话里的旧引用，
+// 否则历史里残留的 [image_61] 会一直失效、模型也会跟着抄旧号
+const ALIAS_TOKEN_RE = /\[image_(\d+)\]/gi;
+function replaceAliasTokens(text, mapping) {
+  if (typeof text !== 'string' || !text) return text;
+  return text.replace(ALIAS_TOKEN_RE, (whole, n) => mapping[`[image_${n}]`] || whole);
+}
+function applyImageAliasMapping(mapping) {
+  if (!mapping || !Object.keys(mapping).length) return 0;
+  let changed = 0;
+  for (const m of chatState.messages) {
+    const nextText = replaceAliasTokens(m.text, mapping);
+    if (nextText !== m.text) { m.text = nextText; changed += 1; }
+    for (const t of m.toolCalls || []) {
+      if (!t) continue;
+      const nextArgs = replaceAliasTokens(t.args, mapping);
+      if (nextArgs !== t.args) { t.args = nextArgs; changed += 1; }
+      const nextResult = replaceAliasTokens(t.result, mapping);
+      if (nextResult !== t.result) { t.result = nextResult; changed += 1; }
+    }
+  }
+  return changed;
+}
+
+const resetAliasBtn = $('#btn-reset-image-alias');
+if (resetAliasBtn) {
+  resetAliasBtn.onclick = async () => {
+    const ok = window.confirm('重置后图片编号会压紧成从 1 开始的连续号码，并同步改写当前会话里的引用，确定继续？');
+    if (!ok) return;
+    const r = window.petApi && window.petApi.imageAliasReset ? await window.petApi.imageAliasReset() : null;
+    if (!r || !r.ok) {
+      toast(r && r.error ? `重置失败：${r.error}` : '重置失败', 'error');
+      return;
+    }
+    const changed = applyImageAliasMapping(r.mapping || {});
+    if (changed) {
+      saveChatSession();
+      renderChat();
+    }
+    toast(changed ? `图片别名编号已重置，${changed} 处历史引用已同步` : '图片别名编号已重置');
   };
 }
 

@@ -447,10 +447,13 @@ test('生物钟：改作息后困意与褪黑素按新钟点重新起算', () =>
   assert.ok(n.body.sleepiness > 70, '默认作息的凌晨该困，实际 ' + n.body.sleepiness);
 });
 
-test('生物钟：状态标签五档（睡眠段优先，其余按困意）', () => {
+test('生物钟：状态标签按困意分档（睡眠段不再特殊）', () => {
   const s = fresh();
   // 默认 06:00 起床 / 22:00 入睡
-  assert.strictEqual(E.stateTag(s, at(2, 0), undefined), '刚被叫醒');
+  s.body.sleepiness = 72;
+  assert.strictEqual(E.stateTag(s, at(22, 59), undefined), '有点困');
+  s.body.sleepiness = 85;
+  assert.strictEqual(E.stateTag(s, at(2, 0), undefined), '很困');
   assert.strictEqual(E.stateTag(s, at(6, 20), undefined), '刚睡醒');
   s.body.sleepiness = 30;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '清醒');
@@ -458,10 +461,31 @@ test('生物钟：状态标签五档（睡眠段优先，其余按困意）', ()
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '有点困');
   s.body.sleepiness = 85;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '很困');
-  // 换作息后按虚拟段判断：18:00 起床 / 14:00 入睡，真实 14:30 在睡眠段
-  assert.strictEqual(E.stateTag(s, at(14, 30), { wake: 18, sleep: 14 }), '刚被叫醒');
+  // 换作息后只看起床时间：18:00 起床 / 14:00 入睡，真实 14:30 已过起床 40 分钟
+  assert.strictEqual(E.stateTag(s, at(14, 30), { wake: 18, sleep: 14 }), '很困');
   assert.strictEqual(E.stateTag(s, at(18, 20), { wake: 18, sleep: 14 }), '刚睡醒');
 });
+
+test('生物钟：状态标签映射表可改阈值与文案', () => {
+  const s = fresh();
+  s.body.sleepiness = 55;
+  const tiers = [
+    { min: 90, label: '快睡着了' },
+    { min: 50, label: '犯困' },
+    { min: 0, label: '精神' },
+  ];
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined, tiers), '犯困');
+  s.body.sleepiness = 95;
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined, tiers), '快睡着了');
+  s.body.sleepiness = 20;
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined, tiers), '精神');
+  // 低于最低阈值也归到最后一档；空表 / 坏表回落到默认
+  s.body.sleepiness = 0;
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined, [{ min: 60, label: '困' }]), '困');
+  assert.strictEqual(E.stateTag(s, at(10, 0), undefined, []), '清醒');
+  assert.deepStrictEqual(E.normalizeTiers(undefined).map((t) => t.label), ['很困', '有点困', '清醒']);
+});
+
 
 test('生物钟：{phase} 仍按真实钟点', () => {
   assert.strictEqual(E.phase(7), '清晨');
