@@ -873,14 +873,13 @@
               </label>
               <div id="emotion-params"></div>
               <label class="setting-row">
-                <div><b>情绪化上下文</b><span>按当前压力决定发送多少轮：平常约 80%，紧张时接近上限；总轮数永不超过上面「发送最近多少轮对话」。关闭则完全沿用原来的连续窗口。</span></div>
+                <div><b>情绪化上下文</b><span>按当前压力决定发送多少轮：平常约 80%，紧张时接近上限。非 MAX 时不超过上面「发送最近多少轮对话」，MAX 时按真实轮数乘权重（例如 200 轮 × 0.84）。关闭则完全沿用原来的连续窗口。</span></div>
                 <input type="checkbox" id="set-emotion-context" />
               </label>
               <label class="setting-row" id="row-emotion-context-pick">
                 <div><b>情绪一致性回忆</b><span>把剩余约 35% 的额度从「按时间连续」换成「从更早的对话里挑情绪相近、印象更深的片段」，挑中的会带短时间戳；关闭则只用连续窗口。</span></div>
                 <input type="checkbox" id="set-emotion-context-pick" checked />
               </label>
-              <p class="page-desc" id="emotion-context-hint"></p>
             </div>
           </div>
 

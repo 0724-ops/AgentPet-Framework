@@ -2424,7 +2424,7 @@ function renderEmotionStatus() {
           <div class="emotion-card-head"><b>实时状态</b></div>
           <ul class="emotion-influences">${snap.influences.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
           ${emotionContextLines().map((line) => `<div class="emotion-hint">${escapeHtml(line)}</div>`).join('')}
-          <div class="emotion-hint">只影响她长时间待机时主动开口的语气，不写进普通对话</div>
+        </div>
         </section>
 
         <section class="emotion-card emotion-card--tight">
@@ -2771,7 +2771,6 @@ function initEmotionPanel() {
       const row = ctxPick.closest ? ctxPick.closest('.setting-row') : null;
       if (row) row.classList.toggle('is-disabled', settings.emotionContext !== true);
     }
-    renderEmotionContextHint();
   };
   if (ctxToggle) {
     ctxToggle.addEventListener('change', () => {
@@ -2800,40 +2799,21 @@ function emotionContextLines() {
     return [`当前上下文窗口 ${settings.historyWindow} 轮（情绪化上下文未开启）`];
   }
   const plan = currentEmotionContextPlan();
+  const pct = Math.round((plan.weight || 0) * 100);
   if (plan.available < MIN_CONTEXT_TURNS) {
-    return [`当前只有 ${plan.available} 轮对话（不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送）`];
+    return [`当前共 ${plan.available} 轮对话（不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送）`];
   }
   if (settings.emotionContextPick === false) {
-    return [`当前上下文窗口 ${plan.total} 轮（情绪一致性已关闭，全部连续）`];
+    return [`当前共 ${plan.available} 轮对话，本次注入 ${plan.total} 轮（情绪权重 ${pct}%），全部连续`];
   }
   if (plan.available <= plan.total) {
-    return [`当前上下文窗口 ${plan.total} 轮（全部为最近连续对话）`];
+    return [`当前共 ${plan.available} 轮对话，本次注入 ${plan.total} 轮（情绪权重 ${pct}%），全部为最近连续对话`];
   }
-  const lines = [`当前上下文窗口 ${plan.total} 轮，其中 ${plan.fill} 轮由情绪决定`];
+  const lines = [`当前共 ${plan.available} 轮对话，本次注入 ${plan.total} 轮（情绪权重 ${pct}%），其中 ${plan.fill} 轮由情绪决定（候选 ${plan.candidates} 轮）`];
   lines.push(plan.labels.length
     ? `优先回忆：${plan.labels.join(' · ')}`
     : '优先回忆：暂无（旧对话还没有情绪标签）');
   return lines;
-}
-
-// 「情绪化上下文」下方的实时说明：当前压力系数与预计发送轮数
-function renderEmotionContextHint() {
-  const el = $('#emotion-context-hint');
-  if (!el) return;
-  if (settings.emotionContext !== true) {
-    el.textContent = '关闭时：按「发送最近多少轮对话」原样发送连续窗口。';
-    return;
-  }
-  const w = emotionContextWeight();
-  const plan = currentEmotionContextPlan();
-  if (plan.available < MIN_CONTEXT_TURNS) {
-    el.textContent = `当前只有 ${plan.available} 轮对话，不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送。`;
-    return;
-  }
-  const parts = settings.emotionContextPick !== false
-    ? `连续 ${plan.keep} + 情绪补齐 ${plan.fill}`
-    : `全部连续 ${plan.total}`;
-  el.textContent = `当前压力系数 ${Math.round(w * 100)}%：本次最多 ${plan.total} 轮（${parts}）。`;
 }
 
 function bindEmotionEvents(root) {
@@ -3297,7 +3277,9 @@ function currentEmotionContextPlan() {
   const after = chatState.messages.filter((m) => !m.streaming && ensureSeq(m) > cutoff);
   const turns = splitDialogTurns(after);
   const available = turns.length;
-  const plan = planHistoryWindow(settings.historyWindow, emotionContextWeight(), available);
+  const weight = emotionContextWeight();
+  const plan = planHistoryWindow(settings.historyWindow, weight, available);
+  const candidates = Math.max(0, available - plan.keep);
   const labels = [];
   if (settings.emotionContextPick !== false && plan.fill && available > plan.total) {
     const older = turns.slice(0, available - plan.keep);
@@ -3312,7 +3294,7 @@ function currentEmotionContextPlan() {
       if (text) labels.push(String(text));
     }));
   }
-  return { ...plan, available, labels: [...new Set(labels)].slice(0, 4) };
+  return { ...plan, available, weight, candidates, labels: [...new Set(labels)].slice(0, 4) };
 }
 
 // 非连续拼接可能出现两条同角色的普通消息，合并成一条，保证交替
@@ -11729,7 +11711,6 @@ if (historyInput) {
         warn.hidden = true;
       }
     }
-    renderEmotionContextHint();
   };
   historyInput.value = String(settings.historyWindow);
   syncHistoryUi();
