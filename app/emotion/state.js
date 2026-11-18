@@ -93,9 +93,8 @@ function sanitize(raw, character) {
     s.personality[key] = personalityValue(v, def);
   }
 
-  // 四组 0~100 数值
+  // 三组 0~100 数值（困意已合并到 hormones.melatonin）
   const groups = [
-    ['body', engine.BODY_REST],
     ['hormones', engine.HORMONE_REST],
     ['relation', engine.RELATION_REST],
     ['talents', engine.TALENT_DEFAULT],
@@ -122,7 +121,6 @@ function sanitize(raw, character) {
 
   // 上一次情绪
   s.last_inner = typeof raw.last_inner === 'string' ? raw.last_inner : null;
-  s.last_valence = engine.clamp(num(raw.last_valence, 50), 0, 100);
   s.last_signed = Number.isFinite(Number(raw.last_signed)) ? Number(raw.last_signed) : null;
 
   // 今日额度

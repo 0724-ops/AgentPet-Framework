@@ -35,15 +35,6 @@ function fresh() {
 
 // ---------------------------------------------------------------- 衰减
 
-test('身体：180 分钟向「静息+昼夜」靠拢一半', () => {
-  const s = fresh();
-  s.body.stamina = 68;
-  // 13:00 的体力昼夜偏移是 -4 → 静息 64
-  E.tick(s, at(13, 0));
-  const expect = 64 + (68 - 64) * 0.5;
-  assert.ok(Math.abs(s.body.stamina - expect) < 1e-6, `实际 ${s.body.stamina}，期望 ${expect}`);
-});
-
 test('激素：半衰期按韧性加速，且结果不越界', () => {
   const s = fresh();
   s.hormones.adrenaline = 100;
@@ -64,10 +55,25 @@ test('激素：半衰期按韧性加速，且结果不越界', () => {
 test('褪黑素按钟点靠拢，深夜困倦上涨', () => {
   const s = fresh();
   s.hormones.melatonin = 10;
-  s.body.sleepiness = 30;
   E.tick(s, at(2, 0, 1)); // 次日 02:00，目标 94
   assert.ok(s.hormones.melatonin > 60, '褪黑素应被抬到高位，实际 ' + s.hormones.melatonin);
-  assert.ok(s.body.sleepiness > 30, '困倦应上涨');
+});
+
+test('褪黑素：心情好更清醒，低落更容易困（幅度很小）', () => {
+  const happy = fresh();
+  happy.hormones.dopamine = 80;
+  happy.hormones.oxytocin = 70;
+  happy.hormones.serotonin = 70;
+  happy.hormones.cortisol = 10;
+  const sad = fresh();
+  sad.hormones.dopamine = 10;
+  sad.hormones.cortisol = 70;
+  sad.hormones.serotonin = 30;
+  E.tick(happy, at(14, 0)); // 中午静息目标 ~12，心情偏置最多 ±6
+  E.tick(sad, at(14, 0));
+  assert.ok(happy.hormones.melatonin < sad.hormones.melatonin,
+    `happy=${happy.hormones.melatonin} sad=${sad.hormones.melatonin}`);
+  assert.ok(sad.hormones.melatonin - happy.hormones.melatonin < 12, '幅度应很小');
 });
 
 test('关系：12 天半衰，只掉一半距离', () => {
@@ -124,10 +130,10 @@ test('情绪：嘴软的人内外一致', () => {
   assert.strictEqual(f.inner, f.outer);
 });
 
-test('情绪：三维都在 0~100，强度在 0~1', () => {
+test('情绪：愉悦 / 唤醒都在 0~100，强度在 0~1', () => {
   const s = fresh();
   const f = E.feel(s);
-  for (const k of ['valence', 'arousal', 'control']) {
+  for (const k of ['valence', 'arousal']) {
     assert.ok(f[k] >= 0 && f[k] <= 100, k + ' 越界：' + f[k]);
   }
   assert.ok(f.intensity >= 0 && f.intensity <= 1);
@@ -206,7 +212,7 @@ test('额度：心情好 5 / 平常 3 / 低落 1，困了减一', () => {
   assert.strictEqual(qLow.cap, 1);
 
   const normal = fresh();
-  normal.body.sleepiness = 90;
+  normal.hormones.melatonin = 90;
   const qNormal = E.proactiveQuota(normal, T0, {}, E.feel(normal));
   assert.strictEqual(qNormal.cap, 2);
 });
@@ -338,7 +344,7 @@ test('占位符：包含注入模板要用的全部字段', () => {
   const s = fresh();
   s.profile.together_since = '2026-11-01';
   const v = E.placeholders(s, T0, {});
-  for (const key of ['inner', 'outer', 'valence', 'arousal', 'control', 'intensity',
+  for (const key of ['inner', 'outer', 'valence', 'arousal', 'intensity',
     'body_line', 'relation_line', 'hormone_line', 'left', 'gap_min', 'fear']) {
     assert.ok(v[key] !== undefined, '缺字段 ' + key);
   }
@@ -432,36 +438,34 @@ test('生物钟：tick 按映射后的钟点算褪黑素', () => {
   assert.ok(normal.hormones.melatonin < 20, '默认作息 7 点该清醒：' + normal.hormones.melatonin);
 });
 
-test('生物钟：改作息后困意与褪黑素按新钟点重新起算', () => {
+test('生物钟：改作息后褪黑素按新钟点重新起算', () => {
   const s = fresh();
-  s.body.sleepiness = 94;
   s.hormones.melatonin = 80;
   // 18:00 起床 / 14:00 入睡：真实 23:56 落在清醒段，虚拟钟点约 10:45
   E.rebaseRhythm(s, at(23, 56), { wake: 18, sleep: 14 });
-  assert.ok(s.body.sleepiness < 40, '应该回到白天水平，实际 ' + s.body.sleepiness);
   assert.ok(s.hormones.melatonin < 20, '褪黑素应该落到低位，实际 ' + s.hormones.melatonin);
 
   const n = fresh();
-  n.body.sleepiness = 10;
+  n.hormones.melatonin = 10;
   E.rebaseRhythm(n, at(2, 0), { wake: 6, sleep: 22 });
-  assert.ok(n.body.sleepiness > 70, '默认作息的凌晨该困，实际 ' + n.body.sleepiness);
+  assert.ok(n.hormones.melatonin > 70, '默认作息的凌晨该困，实际 ' + n.hormones.melatonin);
 });
 
 test('生物钟：状态标签按困意分档（睡眠段不再特殊）', () => {
   const s = fresh();
   // 默认 06:00 起床 / 22:00 入睡
-  s.body.sleepiness = 72;
+  s.hormones.melatonin = 72;
   assert.strictEqual(E.stateTag(s, at(22, 59), undefined), '比较困');
-  s.body.sleepiness = 85;
+  s.hormones.melatonin = 85;
   assert.strictEqual(E.stateTag(s, at(2, 0), undefined), '很困');
   assert.strictEqual(E.stateTag(s, at(6, 20), undefined), '刚睡醒');
-  s.body.sleepiness = 30;
+  s.hormones.melatonin = 30;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '清醒');
-  s.body.sleepiness = 55;
+  s.hormones.melatonin = 55;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '有点困');
-  s.body.sleepiness = 70;
+  s.hormones.melatonin = 70;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '比较困');
-  s.body.sleepiness = 85;
+  s.hormones.melatonin = 85;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined), '很困');
   // 换作息后只看起床时间：18:00 起床 / 14:00 入睡，真实 14:30 已过起床 40 分钟
   assert.strictEqual(E.stateTag(s, at(14, 30), { wake: 18, sleep: 14 }), '很困');
@@ -470,19 +474,19 @@ test('生物钟：状态标签按困意分档（睡眠段不再特殊）', () =>
 
 test('生物钟：状态标签映射表可改阈值与文案', () => {
   const s = fresh();
-  s.body.sleepiness = 55;
+  s.hormones.melatonin = 55;
   const tiers = [
     { min: 90, label: '快睡着了' },
     { min: 50, label: '犯困' },
     { min: 0, label: '精神' },
   ];
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined, tiers), '犯困');
-  s.body.sleepiness = 95;
+  s.hormones.melatonin = 95;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined, tiers), '快睡着了');
-  s.body.sleepiness = 20;
+  s.hormones.melatonin = 20;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined, tiers), '精神');
   // 低于最低阈值也归到最后一档；空表 / 坏表回落到默认
-  s.body.sleepiness = 0;
+  s.hormones.melatonin = 0;
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined, [{ min: 60, label: '困' }]), '困');
   assert.strictEqual(E.stateTag(s, at(10, 0), undefined, []), '清醒');
   assert.deepStrictEqual(E.normalizeTiers(undefined).map((t) => t.label), ['很困', '比较困', '有点困', '清醒']);

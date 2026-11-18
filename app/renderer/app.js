@@ -2123,7 +2123,6 @@ function emotionSnapshot() {
     enabled: true,
     state: s,
     emotion: emo,
-    outbound: E.outbound(s),
     quota: E.proactiveQuota(s, now, cfg, emo),
     night: E.isNight(now, cfg),
     gapMin: Math.round(E.baseGapMinutes(s, cfg, emo)),
@@ -2144,7 +2143,7 @@ const EMOTION_PERSONALITY_NAMES = {
   warmth: '温暖', sensitivity: '敏感', resilience: '韧性',
   optimism: '乐观', openness: '开放', stubbornness: '倔强',
 };
-const EMOTION_BODY_NAMES = { stamina: '体力', sleepiness: '困倦', hunger: '饥饿', health: '健康' };
+const EMOTION_BODY_NAMES = { sleepiness: '困倦' };
 // 面板给用户看的名字：用感受词，不暴露激素术语
 const EMOTION_HORMONE_NAMES = {
   adrenaline: '紧张', cortisol: '压力', dopamine: '快乐', oxytocin: '亲密',
@@ -2170,7 +2169,6 @@ const SHOW_EMOTION_VIEW_TOGGLE = false;
 // UI 精简：这些条要么跟别的条一个意思、要么对普通用户太抽象，只隐藏显示，数值照常算。
 // 想恢复某一条，从集合里删掉对应 key 即可。
 const EMOTION_HIDDEN_METERS = new Set([
-  'control',    // 掌控：太抽象
   'adrenaline', // 紧张：和「压力」几乎同义
   'serotonin',  // 满足：和「快乐」重合
   'oxytocin',   // 亲密：和「关系 · 亲近」重复
@@ -2343,11 +2341,10 @@ function renderEmotionStatus() {
   const ph = snap.placeholders;
   const days = ph.daysTogether;
   const simple = SHOW_EMOTION_VIEW_TOGGLE ? settings.emotionSimpleView !== false : true;
-  // 此刻的三条：掌控默认隐藏，见 EMOTION_HIDDEN_METERS
+  // 此刻两条：愉悦 / 唤醒（掌控已随死值一起删掉）
   const moodMeters = [
     ['valence', '愉悦', emo.valence],
     ['arousal', '唤醒', emo.arousal],
-    ['control', '掌控', emo.control],
   ]
     .filter(([key]) => !EMOTION_HIDDEN_METERS.has(key))
     .map(([, label, value]) => emotionMeter(label, value, 100))
@@ -2399,10 +2396,6 @@ function renderEmotionStatus() {
             <span class="emotion-tag">强度 ${Math.round((Number(emo.intensity) || 0) * 100)}%</span>
           </div>
           ${moodMeters}
-          ${simple ? '' : `
-          ${emotionMeter('话多', snap.outbound.verbosity, 2, `${snap.outbound.verbosity.toFixed(2)}×`)}
-          ${emotionMeter('回速', snap.outbound.delay, 2, `${snap.outbound.delay.toFixed(2)}×`)}
-          ${emotionMeter('黏人', snap.outbound.cling, 2, `${snap.outbound.cling.toFixed(2)}×`)}`}
         </section>
 
         <section class="emotion-card">
@@ -2418,9 +2411,6 @@ function renderEmotionStatus() {
       <div class="emotion-col">
         <section class="emotion-card">
           <div class="emotion-card-head"><b>状态</b></div>
-          ${simple ? '' : `
-          ${Object.keys(EMOTION_BODY_NAMES).filter((key) => !EMOTION_HIDDEN_METERS.has(key)).map((key) => emotionMeter(EMOTION_BODY_NAMES[key], snap.state.body[key], 100)).join('')}
-          <div class="emotion-divider"></div>`}
           ${Object.keys(EMOTION_HORMONE_NAMES).filter((key) => !EMOTION_HIDDEN_METERS.has(key)).map((key) => emotionMeter(EMOTION_HORMONE_NAMES[key], snap.state.hormones[key], 100)).join('')}
         </section>
 
@@ -2495,8 +2485,8 @@ function nowHourOfDay(d = new Date()) {
 
 // 当前困倦值：情感系统没跑时返回 null，只显示时间
 function currentSleepiness() {
-  const body = emotionRuntime.state && emotionRuntime.state.body;
-  const v = body ? Number(body.sleepiness) : NaN;
+  const hormones = emotionRuntime.state && emotionRuntime.state.hormones;
+  const v = hormones ? Number(hormones.melatonin) : NaN;
   return Number.isFinite(v) ? Math.round(v) : null;
 }
 
@@ -3307,7 +3297,9 @@ function emotionContextWeight() {
   if (!emotionActive() || !emotionRuntime.state) return 1;
   const h = emotionRuntime.state.hormones || {};
   const stress = Math.min(1, Math.max(0, ((Number(h.cortisol) || 0) + (Number(h.adrenaline) || 0)) / 160));
-  return 0.8 + 0.2 * stress;
+  // 困意（褪黑素）50 以上开始线性收紧窗口：满值最多打 0.88 折，表现成「有点神志不清」
+  const fog = Math.min(1, Math.max(0, ((Number(h.melatonin) || 0) - 50) / 50)) * 0.12;
+  return (0.8 + 0.2 * stress) * (1 - fog);
 }
 
 // 按「用户消息」切轮：每条 user 开启一轮，后面的 ai 归属该轮

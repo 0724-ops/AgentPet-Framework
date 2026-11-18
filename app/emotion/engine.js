@@ -23,9 +23,6 @@
 
 // ---------------------------------------------------------------- 常量表
 
-// 身体静息值
-const BODY_REST = { stamina: 68, sleepiness: 32, hunger: 25, health: 88 };
-
 // 激素静息值与半衰期（分钟）
 const HORMONE_REST = {
   adrenaline: 15, cortisol: 20, dopamine: 45, oxytocin: 50,
@@ -39,9 +36,9 @@ const HALF_LIFE = {
 // 关系静息值（12 天半衰）
 const RELATION_REST = { affection: 60, trust: 60, dependence: 50, security: 55, rapport: 50 };
 
-// 技能六维默认值（第一阶段只有数据，没有触发源）
-const TALENTS = ['理性', '直觉', '共情', '表达', '动手', '胆量'];
-const TALENT_DEFAULT = { 理性: 60, 直觉: 60, 共情: 60, 表达: 60, 动手: 55, 胆量: 50 };
+// 技能只剩「胆量」：其余五维从未被读取，已删
+const TALENTS = ['胆量'];
+const TALENT_DEFAULT = { 胆量: 50 };
 
 // 性格六维默认值（六边形，无星座加成）
 const PERSONALITY_KEYS = ['warmth', 'sensitivity', 'resilience', 'optimism', 'openness', 'stubbornness'];
@@ -139,16 +136,7 @@ function clockHoursOf(now) {
   return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
 }
 
-// 昼夜节律：每个小时的身体偏移
-function circadian(hour) {
-  if (hour >= 0 && hour < 6) return { stamina: -22, sleepiness: 45, hunger: -5 };
-  if (hour < 9) return { stamina: -8, sleepiness: 12, hunger: 8 };
-  if (hour < 12) return { stamina: 6, sleepiness: -6, hunger: 4 };
-  if (hour < 14) return { stamina: -4, sleepiness: 10, hunger: 22 };
-  if (hour < 18) return { stamina: 4, sleepiness: 2, hunger: 0 };
-  if (hour < 22) return { stamina: -2, sleepiness: 6, hunger: 14 };
-  return { stamina: -12, sleepiness: 22, hunger: -2 };
-}
+// 昼夜节律：返回虚拟钟点对应的小时数（供褪黑素曲线使用）
 
 // 褪黑素钟点目标值：虚拟钟点可能是小数，按相邻整点线性插值
 function melatoninTarget(hour) {
@@ -224,14 +212,12 @@ function rhythmSegments(rhythm) {
   return out;
 }
 
-// 改了作息后，把「钟点直接驱动」的两项按此刻虚拟钟点应有的水平重新起算：
-// 褪黑素对齐目标值，困意回到该时段的静息水平。
+// 改了作息后，把钟点直接驱动的褪黑素按此刻虚拟钟点应有的水平重新起算，
 // 否则旧作息攒下的困意要几小时才化开，看起来像设置没生效。
 function rebaseRhythm(s, now, rhythm) {
-  if (!s || !s.body || !s.hormones) return s;
+  if (!s || !s.hormones) return s;
   const virtual = rhythmHour(clockHoursOf(now), rhythm);
   s.hormones.melatonin = clamp(melatoninTarget(virtual), 0, 100);
-  s.body.sleepiness = clamp(BODY_REST.sleepiness + (circadian(virtual).sleepiness || 0), 0, 100);
   return s;
 }
 
@@ -267,10 +253,10 @@ function stateTag(s, now, rhythm, tiers) {
   const d = (clockHoursOf(now) - r.wake + 24) % 24;
   if (d < 2 / 3) return '刚睡醒';
   const list = normalizeTiers(tiers);
-  const sleepiness = Number(s && s.body ? s.body.sleepiness : NaN);
-  if (!Number.isFinite(sleepiness)) return list[list.length - 1].label;
+  const sleepy = Number(s && s.hormones ? s.hormones.melatonin : NaN);
+  if (!Number.isFinite(sleepy)) return list[list.length - 1].label;
   for (const t of list) {
-    if (sleepiness >= t.min) return t.label;
+    if (sleepy >= t.min) return t.label;
   }
   // 低于最低一档也归到最低那档，保证总有词可用
   return list[list.length - 1].label;
@@ -286,13 +272,11 @@ function defaultState(now) {
     startedAt: d.toISOString(),
     profile: { name: '', together_since: null },
     personality: { ...PERSONALITY_DEFAULT },
-    body: { ...BODY_REST },
     hormones: { ...HORMONE_REST },
     relation: { ...RELATION_REST },
     talents: { ...TALENT_DEFAULT },
     fear: null,
     last_inner: null,
-    last_valence: 50,
     last_signed: null,
     today: { date: dateKey(d), sent: 0 },
     lastProactiveAt: null,
@@ -320,17 +304,6 @@ function minutesSince(updatedIso, now) {
   return Math.max(0, (nowDate(now).getTime() - t) / 60000);
 }
 
-function decayBody(s, mins, now, rhythm) {
-  if (mins <= 0) return;
-  const circ = circadian(rhythmHour(clockHoursOf(now), rhythm));
-  const k = 0.5 ** (mins / 180);
-  for (const key of Object.keys(BODY_REST)) {
-    const rest = BODY_REST[key] + (circ[key] || 0);
-    const cur = Number(s.body[key]);
-    s.body[key] = clamp(rest + (cur - rest) * k, 0, 100);
-  }
-}
-
 function decayHormones(s, mins, now, rhythm) {
   if (mins <= 0) return;
   const speed = 0.7 + Number(s.personality.resilience || 0) * 0.6;
@@ -349,10 +322,6 @@ function decayHormones(s, mins, now, rhythm) {
   const target = melatoninTarget(rhythmHour(clockHoursOf(now), rhythm));
   const curMel = s.hormones.melatonin;
   s.hormones.melatonin = clamp(target + (curMel - target) * (0.5 ** (mins / 45)), 0, 100);
-  // 困倦跟着褪黑素走一点
-  if (target > 60) {
-    s.body.sleepiness = clamp(s.body.sleepiness + mins * 0.12, 0, 100);
-  }
 }
 
 function decayRelation(s, mins) {
@@ -376,10 +345,16 @@ function decayFear(s, mins) {
 function tick(s, now, rhythm) {
   const t = nowDate(now);
   const mins = minutesSince(s.updated, t);
-  decayBody(s, mins, t, rhythm);
   decayFear(s, mins);
   decayHormones(s, mins, t, rhythm);
   decayRelation(s, mins);
+  // 心情反过来影响困意（幅度很小）：愉悦低于 50 更容易困，高于 50 更清醒，满幅只拉 ±6。
+  // 先按钟点算目标，再叠加心情偏置，用 45 分钟时间常数靠拢，tick 间隔不同也不会跳。
+  if (mins > 0) {
+    const mood = feel(s);
+    const target = melatoninTarget(rhythmHour(clockHoursOf(t), rhythm)) + (50 - mood.valence) * 0.12;
+    s.hormones.melatonin = clamp(target + (Number(s.hormones.melatonin) - target) * (0.5 ** (mins / 45)), 0, 100);
+  }
   s.updated = t.toISOString();
   return s;
 }
@@ -387,8 +362,8 @@ function tick(s, now, rhythm) {
 // ---------------------------------------------------------------- 情绪
 
 // 情绪标签（内心）
-function nameOf(v, a, cor, oxy, body) {
-  if (body.sleepiness > 80 && v > -20) return '困到走神';
+function nameOf(v, a, cor, oxy, mel) {
+  if (mel > 80 && v > -20) return '困到走神';
   if (cor > 55 && v < -10) return a < 65 ? '委屈' : '生气';
   if (v < -30) return a < 55 ? '失落' : '难受';
   if (oxy > 70 && v > 25) return '想你';
@@ -415,11 +390,10 @@ function mask(inner, v, a, personality, relation) {
   return inner;
 }
 
-// 身体 + 激素 → 情绪三维 → 内心/外显标签
+// 激素 → 情绪三维 → 内心/外显标签
 function feel(s) {
   const p = s.personality;
   const h = s.hormones;
-  const b = s.body;
   const adr = Number(h.adrenaline), cor = Number(h.cortisol), dop = Number(h.dopamine);
   const oxy = Number(h.oxytocin), ser = Number(h.serotonin), end = Number(h.endorphin);
   const mel = Number(h.melatonin);
@@ -430,13 +404,12 @@ function feel(s) {
     + (ser - HORMONE_REST.serotonin) * 0.8
     + (end - HORMONE_REST.endorphin) * 0.5
     - (cor - HORMONE_REST.cortisol) * 0.55
-    - Math.max(0, b.sleepiness - 55) * 0.25;
+    - Math.max(0, mel - 55) * 0.25;
 
   const fear = Number((s.fear || {}).v || 0);
   // signed：以 0 为中性，给标签判断用（参考实现的 v<-30 / v>45 都以 0 为轴）
   const signed = raw * 1.05
     + (Number(p.optimism) - 0.5) * 30
-    + (b.health - 88) * 0.2
     - fear * 0.30;
   // 面板/额度用的 0~100 展示值，50 为中性
   const valence = clamp(50 + signed, 0, 100);
@@ -444,25 +417,18 @@ function feel(s) {
   let arousal = adr + (cor - 20) * 0.4 + (mel - 25) * -0.4 + 22 + fear * 0.35;
   arousal = clamp(arousal, 0, 100);
 
-  let control = 42 + (oxy - 50) * 0.45 + (ser - 52) * 0.5 - (cor - 20) * 0.55
-    - Math.max(0, adr - 30) * 0.35 - Math.max(0, b.sleepiness - 60) * 0.2;
-  control += (Number(p.resilience) - 0.5) * 30;
-  control = clamp(control, 0, 100);
-
-  const cand = nameOf(signed, arousal, cor, oxy, b);
+  const cand = nameOf(signed, arousal, cor, oxy, mel);
   const last = s.last_inner;
   const lastSigned = s.last_signed == null ? signed : Number(s.last_signed);
   // 滞回：除非明显越过上次档位，否则先不换词
   const inner = (last && cand !== last && Math.abs(signed - lastSigned) < 8 && arousal > 18) ? last : cand;
   s.last_inner = inner;
-  s.last_valence = valence;
   s.last_signed = signed;
   const outer = mask(inner, signed, arousal, p, s.relation);
 
   return {
     valence: round(valence, 1),
     arousal: round(arousal, 1),
-    control: round(control, 1),
     inner,
     outer,
     label: outer,
@@ -531,19 +497,12 @@ function applyEvent(s, kind, intensity, src, now, sim) {
 
 // ---------------------------------------------------------------- 行为参数
 
+// 只有 urge / cling 真正影响行为（主动间隔），话多 / 回速已删
 function outbound(s) {
   const f = feel(s);
   const v = f.valence;
   const a = f.arousal;
-  const b = s.body;
   const r = s.relation;
-
-  let delay = 1 - (v / 100) * 0.35 + (Math.max(0, -v) / 100) * 0.7
-    + Math.max(0, b.sleepiness - 60) / 100 * 0.8;
-  delay = clamp(delay, 0.5, 2.6);
-
-  const verbosity = 0.7 + a / 100 * 0.45 + v / 100 * 0.35
-    - Math.max(0, b.sleepiness - 60) / 100 * 0.5;
 
   let urge = 0.45 + Math.abs(v) / 100 * 0.55 + a / 100 * 0.35
     + (r.dependence - 50) / 100 * 0.5;
@@ -556,8 +515,6 @@ function outbound(s) {
   }
 
   return {
-    delay: round(delay, 2),
-    verbosity: round(Math.max(0.3, verbosity), 2),
     urge: round(Math.min(1.6, urge), 2),
     cling: round(Math.min(1.5, cling), 2),
   };
@@ -605,7 +562,7 @@ function proactiveQuota(s, now, config, emo) {
     cap = 3;
     why = '平常的一天';
   }
-  if (s.body.sleepiness > 70 && cap > 1) {
+  if (Number(s.hormones.melatonin) > 70 && cap > 1) {
     cap -= 1;
     why += '，但困了，减一条';
   }
@@ -831,15 +788,13 @@ function deriveTraits(stats, personality, span) {
 // 把数字翻成人话：这一刻是谁在推谁
 function influences(s) {
   const h = s.hormones;
-  const b = s.body;
   const r = s.relation;
   const out = [];
   if (h.adrenaline >= 45) out.push(`紧张 ${Math.round(h.adrenaline)}：主动开口时会说得急一点。`);
   if (h.cortisol >= 40) out.push(`压力 ${Math.round(h.cortisol)}：主动找你时容易往坏处想。`);
   if (h.dopamine >= 60) out.push(`快乐 ${Math.round(h.dopamine)}：主动说话会更轻快。`);
   if (h.oxytocin >= 60) out.push(`亲密 ${Math.round(h.oxytocin)}：特别想黏着你，主动找你更频繁。`);
-  if (b.sleepiness >= 60) out.push(`困到 ${Math.round(b.sleepiness)}：不太想主动开口，找你的次数会变少。`);
-  if (b.hunger >= 60) out.push(`饿到 ${Math.round(b.hunger)}：主动说话会有点没耐心。`);
+  if (h.melatonin >= 60) out.push(`困到 ${Math.round(h.melatonin)}：不太想主动开口，找你的次数会变少。`);
   if (r.trust >= 85) out.push(`信任 ${Math.round(r.trust)}：主动开口时更愿意说心里话。`);
   if (r.security <= 55) out.push(`安全感只有 ${Math.round(r.security)}：主动找你时更想确认你在不在。`);
   const fv = Number((s.fear || {}).v || 0);
@@ -861,12 +816,7 @@ function levelWord(value, words, bands) {
   return words[idx === -1 ? words.length - 1 : idx];
 }
 
-const BODY_WORDS = {
-  stamina: ['体力充沛', '体力不错', '体力一般', '有点累', '很疲惫'],
-  sleepiness: ['困得厉害', '挺困', '有点困', '不太困', '很清醒'],
-  hunger: ['饿得难受', '挺饿', '有点饿', '不太饿', '不饿'],
-  health: ['状态很好', '身体还行', '状态一般', '有点虚', '不太舒服'],
-};
+const TIRED_WORDS = ['困得厉害', '挺困', '有点困', '不太困', '很清醒'];
 
 const RELATION_WORDS = {
   affection: ['很亲近', '挺亲近', '关系一般', '有点疏远', '很生疏'],
@@ -895,16 +845,10 @@ function placeholders(s, now, config, opts) {
   const emo = feel(s);
   const o = outbound(s);
   const quota = proactiveQuota(s, t, config, emo);
-  const b = s.body;
   const r = s.relation;
   const options = opts || {};
 
-  const bodyLine = [
-    levelWord(b.stamina, BODY_WORDS.stamina),
-    levelWord(b.sleepiness, BODY_WORDS.sleepiness),
-    levelWord(b.hunger, BODY_WORDS.hunger),
-    levelWord(b.health, BODY_WORDS.health),
-  ].join('，');
+  const bodyLine = levelWord(s.hormones.melatonin, TIRED_WORDS);
 
   const relationLine = [
     levelWord(r.affection, RELATION_WORDS.affection),
@@ -934,7 +878,6 @@ function placeholders(s, now, config, opts) {
     outer: emo.outer,
     valence: emo.valence,
     arousal: emo.arousal,
-    control: emo.control,
     // 模板里只给程度词，不给 0.19 这种裸数字
     intensity: levelWord(emo.intensity, INTENSITY_WORDS, INTENSITY_BANDS),
     body_line: bodyLine,
@@ -944,8 +887,6 @@ function placeholders(s, now, config, opts) {
     cap: quota.cap,
     gap_min: Math.round(baseGapMinutes(s, config, emo)),
     fear,
-    verbosity: o.verbosity,
-    delay: o.delay,
     cling: o.cling,
     urge: o.urge,
     phase: phase(t.getHours()),
@@ -975,16 +916,16 @@ function daysTogether(s, now) {
 
 const API = {
   // 常量
-  BODY_REST, HORMONE_REST, HALF_LIFE, RELATION_REST,
+  HORMONE_REST, HALF_LIFE, RELATION_REST,
   TALENTS, TALENT_DEFAULT, PERSONALITY_KEYS, PERSONALITY_DEFAULT,
   EVENTS, FEAR_KINDS, FEAR_SHOW, PROACTIVE_DEFAULTS, RHYTHM_DEFAULTS,
   // 工具
-  clamp, round, phase, circadian, melatoninTarget, dateKey, isNight,
+  clamp, round, phase, melatoninTarget, dateKey, isNight,
   // 生物钟
   normalizeRhythm, rhythmHour, rhythmSegments, rebaseRhythm,
   stateTag, STATE_TIERS, normalizeTiers,
   // 状态
-  defaultState, tick, decayBody, decayHormones, decayRelation, decayFear,
+  defaultState, tick, decayHormones, decayRelation, decayFear,
   // 情绪
   feel, mask, nameOf, outbound,
   // 事件
