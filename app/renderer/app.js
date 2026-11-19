@@ -150,6 +150,8 @@ const settings = store.get('agentpet.settings', {
   traitSpan: 20,
   // 性格自适应：每轮语气是否慢慢沉淀进底色（影响情绪与说话方式），默认关
   traitAdapt: false,
+  // MOOD 缺失兜底：模型漏写心情标记时，用她这条回复做一次半强度归类，默认开
+  moodFallback: true,
   // 情绪化上下文：按当前压力决定注入多少轮（上限仍是 historyWindow），默认关
   emotionContext: false,
   // 情绪一致性：把剩下的 35% 换成「情绪相近、印象更深」的旧对话，默认开
@@ -157,6 +159,8 @@ const settings = store.get('agentpet.settings', {
 });
 // 老版本存下来的设置里没有 scalePivot，补一个默认值（0 = 缩放时脚底不动）
 if (typeof settings.scalePivot !== 'number') settings.scalePivot = 0;
+// 老版本没有 MOOD 兜底开关：默认打开
+if (settings.moodFallback == null) settings.moodFallback = true;
 // 老版本没有的新设置项也要补默认值（store.get 不会自动合并新键）
 if (settings.ttsWeb == null) settings.ttsWeb = true;
 if (settings.bloomOn == null) settings.bloomOn = true;
@@ -542,6 +546,7 @@ const el = {
   presetMemory: $('#preset-memory'),
   presetProactive: $('#preset-proactive'),
   presetEmotion: $('#preset-emotion'),
+  presetEmphasize: $('#preset-emphasize'),
   presetSpeakPath: $('#preset-speak-path'),
   presetTools: $('#preset-tools'),
   presetActions: $('#preset-actions'),
@@ -1944,7 +1949,7 @@ async function emotionForTurn(opts) {
 }
 
 // 她的自述情绪（<<<MOOD:...>>>）：只用来结算状态与统计，用完即丢。
-// 不扫正文、不读用户的话；没有 MOOD 就这一轮不结算，面板里留一条记录方便排查。
+// 没写 MOOD 时：开关打开就对「她这条回复」做一次兜底归类（半强度）；关掉则这一轮不结算。
 async function emotionFromMood(mood, visibleText, msg) {
   if (!emotionActive()) return;
   const tag = String(mood || '').trim().slice(0, 60);
@@ -1954,12 +1959,16 @@ async function emotionFromMood(mood, visibleText, msg) {
   if (!s) return;
   const now = new Date();
   E.tick(s, now, emotionRhythm());
-  if (!tag) {
+  const fallback = !tag;
+  if (fallback && (settings.moodFallback === false || !reply)) {
     emotionRuntime.lastMood = { raw: '', hits: [], at: now.toISOString(), missing: true };
     saveEmotionState(false);
     renderEmotionPanel();
     return;
   }
+  // 正常 MOOD 按 intensity × 0.5 结算；兜底归类再减半，避免把正文误判当成她自述
+  const source = fallback ? reply : tag;
+  const strength = fallback ? 0.25 : 0.5;
   let kinds = [];
   let hitsOut = [];
   let modelReady = false;
@@ -1968,32 +1977,38 @@ async function emotionFromMood(mood, visibleText, msg) {
     modelReady = !!(status && status.modelReady);
     // 关键词直通不依赖向量模型，所以模型没就绪也照样识别常见词
     const cls = emotionClassifier();
-    const res = cls ? await cls.classify(tag, { noCooldown: true, noVector: !modelReady }) : null;
+    const res = cls ? await cls.classify(source, { noCooldown: true, noVector: !modelReady }) : null;
     const hits = (res && res.hits) || [];
     hitsOut = hits.map((h) => ({ kind: h.kind, sim: h.sim, intensity: h.intensity, text: h.text }));
     if (hits.length) {
       const hit = hits[0];
-      E.applyEvent(s, hit.kind, hit.intensity * 0.5, 'mood', now, hit.sim);
-      consoleLog('情感', `她自述的心情像 ${hit.kind}${hit.text ? `（命中「${hit.text}」）` : ''}（相似度 ${hit.sim}，强度 ${(hit.intensity * 0.5).toFixed(2)}）`);
+      E.applyEvent(s, hit.kind, hit.intensity * strength, fallback ? 'mood-fallback' : 'mood', now, hit.sim);
+      const kindText = `${hit.kind}${hit.text ? `（命中「${hit.text}」）` : ''}`;
+      consoleLog(
+        '情感',
+        fallback
+          ? `她没写 MOOD，按这条回复兜底识别为 ${kindText}（相似度 ${hit.sim}，半强度 ${(hit.intensity * strength).toFixed(2)}）`
+          : `她自述的心情像 ${kindText}（相似度 ${hit.sim}，强度 ${(hit.intensity * strength).toFixed(2)}）`
+      );
       kinds = hits.map((h) => h.kind);
     }
   } catch (err) {
     consoleLog('警告', `情感识别失败：${err && err.message ? err.message : err}`);
   }
-  emotionRuntime.lastMood = { raw: tag, hits: hitsOut, at: now.toISOString(), modelReady };
+  emotionRuntime.lastMood = { raw: source, hits: hitsOut, at: now.toISOString(), modelReady, fallback };
   // 记下本轮开始前的六维，面板的「对比」白线就用它，直观看出这一轮把她推向了哪边
   emotionRuntime.radarPrev = E.deriveTraits(s.stats, s.personality, settings.traitSpan);
   const valence = E.feel(s).valence;
-  E.noteReplyStats(s, reply || tag, kinds, valence);
+  E.noteReplyStats(s, reply || source, kinds, valence);
   // 开关打开：这一轮的语气开始沉淀进底色，之后 feel() / 激素增益都会跟着变
-  if (settings.traitAdapt) E.adaptPersonality(s, reply || tag, kinds, valence, traitAdaptRate());
+  if (settings.traitAdapt) E.adaptPersonality(s, reply || source, kinds, valence, traitAdaptRate());
   // 给这条回复留一份情绪标签，供「情绪化上下文」后续按情绪挑旧对话（不进 API 历史）
   if (msg && typeof msg === 'object') {
     const hit = hitsOut[0] || null;
     msg.mood = {
       kind: hit ? hit.kind : '',
       text: hit ? hit.text || '' : '',
-      intensity: hit ? Number((hit.intensity * 0.5).toFixed(3)) : 0,
+      intensity: hit ? Number((hit.intensity * strength).toFixed(3)) : 0,
       valence: Math.round(valence),
     };
     saveChatSession();
@@ -2189,9 +2204,13 @@ function emotionMoodTrace() {
   const m = emotionRuntime.lastMood;
   if (!m) return `<div class="emotion-hint">还没有收到她的心情标记</div>`;
   if (m.missing) return `<div class="emotion-hint">这一轮没有 MOOD，情绪未结算</div>`;
+  const fallbackNote = m.fallback
+    ? '<div class="emotion-hint">这一轮没写 MOOD，已按她的回复兜底归类（半强度）</div>'
+    : '';
   const hits = Array.isArray(m.hits) ? m.hits : [];
   if (!hits.length) {
     return (
+      fallbackNote +
       `<div class="emotion-mood-raw">${escapeHtml(m.raw)}</div>` +
       `<div class="emotion-hint">${m.modelReady === false ? '记忆模型未就绪，这轮没能归类' : '没有命中任何一类'}</div>`
     );
@@ -2204,6 +2223,7 @@ function emotionMoodTrace() {
     })
     .join('');
   return (
+    fallbackNote +
     `<div class="emotion-mood-raw">${escapeHtml(m.raw)}</div>` +
     `<div class="emotion-tags">${tags}</div>`
   );
@@ -2726,6 +2746,15 @@ function renderEmotionParams() {
     ${rhythmCardHtml()}
 
     <section class="emotion-card emotion-param-card">
+      <div class="emotion-card-head"><b>MOOD 兜底</b></div>
+      <label class="emotion-field emotion-field--row">
+        <span>没写 MOOD 时按她的回复归类</span>
+        <input type="checkbox" data-em-setting="moodFallback"${settings.moodFallback !== false ? ' checked' : ''} />
+      </label>
+      <div class="emotion-hint">模型漏写心情标记时，用关键词 + 向量对她这条回复做一次归类，按半强度结算；关掉就完全不结算。</div>
+    </section>
+
+    <section class="emotion-card emotion-param-card">
       <div class="emotion-card-head"><b>雷达平滑</b></div>
       <div class="emotion-kv"><span>先验强度</span><b><span data-trait-span-value>${span}</span> 条</b></div>
       <input class="emotion-range" type="range" min="1" max="100" step="1" value="${span}" data-em-setting="traitSpan" />
@@ -2765,6 +2794,10 @@ function applyEmotionSettingValue(key, raw) {
   }
   if (key === 'traitAdapt') {
     settings.traitAdapt = !!raw;
+    return;
+  }
+  if (key === 'moodFallback') {
+    settings.moodFallback = !!raw;
     return;
   }
   const n = Number(raw);
@@ -5673,6 +5706,11 @@ function promptTimeOn() {
   return store.get('agentpet.promptTime', true) !== false;
 }
 
+// 「设置 → 预设 → 发送强调提示词」：默认关，开启后才在当轮用户消息末尾贴 EMPHASIZE
+function promptEmphasizeOn() {
+  return store.get('agentpet.promptEmphasize', false) === true;
+}
+
 // 注入前统一替换 {{char}} 占位符；角色名来自当前角色定义
 function charTemplate(text) {
   if (!text) return '';
@@ -5721,19 +5759,22 @@ function buildChatMessages() {
   // 时钟与状态只贴在最新一条用户消息上（buildApiHistory 返回的是新对象，改不到 si.chat）。
   // 格式：[2026-11-15 周六 14:30] (状态：清醒) 正文
   const head = [withTime ? `[${timeStampForPrompt()}]` : '', stateLine].filter(Boolean).join(' ');
-  let attached = false;
-  if (head) {
-    for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i].role === 'user' && typeof history[i].content === 'string') {
-        history[i].content = `${head} ${history[i].content}`;
-        attached = true;
-        break;
-      }
+  // 强调提示词（紧箍咒）贴在用户这句话的末尾：开关打开才注入，只进请求体，不落库、不进之后的上下文
+  const emphasize = promptEmphasizeOn() ? charTemplate(emphasizeMd).trim() : '';
+  let lastUser = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === 'user' && typeof history[i].content === 'string') {
+      lastUser = i;
+      break;
     }
   }
-  // 兜底：万一窗口里没有用户消息（不该发生），状态不能被吞掉，退回 system
-  if (head && !attached) {
-    return [{ role: 'system', content: [system, head].filter(Boolean).join('\n\n') }, ...history];
+  if (lastUser >= 0) {
+    const body = history[lastUser].content;
+    history[lastUser].content = [head ? `${head} ${body}` : body, emphasize].filter(Boolean).join('\n\n');
+  }
+  // 兜底：万一窗口里没有用户消息（不该发生），状态与强调不能被吞掉，退回 system
+  if (lastUser < 0 && (head || emphasize)) {
+    return [{ role: 'system', content: [system, head, emphasize].filter(Boolean).join('\n\n') }, ...history];
   }
   return [{ role: 'system', content: system }, ...history];
 }
@@ -9562,6 +9603,19 @@ if (promptTimeToggle) {
   };
 }
 
+// 设置 → 预设：是否发送强调提示词（默认关，只影响请求体）
+const promptEmphasizeToggle = $('#set-prompt-emphasize');
+if (promptEmphasizeToggle) {
+  promptEmphasizeToggle.checked = promptEmphasizeOn();
+  promptEmphasizeToggle.onchange = () => {
+    store.set('agentpet.promptEmphasize', !!promptEmphasizeToggle.checked);
+    toast(
+      promptEmphasizeToggle.checked ? '已开启强调提示词' : '已关闭强调提示词',
+      promptEmphasizeToggle.checked ? 'accent' : '',
+    );
+  };
+}
+
 // 视线跟随：设置页开关与 Dock 浮层开关共用同一份状态
 const followSwitch = $('#set-mouse-follow');
 const dockFollowSwitch = $('#dock-mouse-follow');
@@ -10192,12 +10246,15 @@ let timeNoteMd = '';
 let memoryTemplateMd = '';
 // 每轮注入的状态行模板（{state} 为占位符），在预设页可编辑；开关在选项·生物钟
 let emotionStateTemplateMd = '';
+// 强调提示词：只在当轮贴在最后一条用户消息末尾，不落库、不进上下文
+let emphasizeMd = '';
 let presetPersonaDirty = false;
 let presetSpeakDirty = false;
 let presetTimeDirty = false;
 let presetMemoryDirty = false;
 let presetProactiveDirty = false;
 let presetEmotionDirty = false;
+let presetEmphasizeDirty = false;
 
 // 预设页 TOOLS 区块：只展示 tools.config.json 里启用的真工具（只读，开关在「工具管理」）。
 // SPEAK / MEM_MARK 属于底层协议，不在此列。
@@ -10559,6 +10616,16 @@ async function loadPresetEmotion() {
   }
 }
 
+// 强调提示词：同样来自本地 md，只在 buildChatMessages 里贴到最后一条用户消息末尾
+async function loadPresetEmphasize() {
+  const r = await readPresetText('readPresetEmphasize');
+  emphasizeMd = r.text || '';
+  if (!presetEmphasizeDirty && el.presetEmphasize) {
+    el.presetEmphasize.value = emphasizeMd;
+    lineNumbersFor(el.presetEmphasize);
+  }
+}
+
 function renderPreset() {
   loadPresetPersona();
   loadPresetSpeak();
@@ -10566,6 +10633,7 @@ function renderPreset() {
   loadPresetMemory();
   loadPresetProactive();
   loadPresetEmotion();
+  loadPresetEmphasize();
   renderPresetActions();
   renderPresetTools();
 }
@@ -10577,6 +10645,7 @@ const presetInputs = [
   [el.presetMemory, () => (presetMemoryDirty = true)],
   [el.presetProactive, () => (presetProactiveDirty = true)],
   [el.presetEmotion, () => (presetEmotionDirty = true)],
+  [el.presetEmphasize, () => (presetEmphasizeDirty = true)],
 ];
 presetInputs.forEach(([node, markDirty]) => {
   if (!node) return;
@@ -10598,6 +10667,7 @@ $('#btn-save-all').onclick = async () => {
   memoryTemplateMd = el.presetMemory.value;
   if (el.presetProactive) emotionRuntime.proactiveTemplate = el.presetProactive.value;
   if (el.presetEmotion) emotionStateTemplateMd = el.presetEmotion.value;
+  if (el.presetEmphasize) emphasizeMd = el.presetEmphasize.value;
   const jobs = [
     ['writePresetPersona', personaMd],
     ['writePresetSpeak', speakFormatMd],
@@ -10606,6 +10676,7 @@ $('#btn-save-all').onclick = async () => {
   ];
   if (el.presetProactive) jobs.push(['writePresetProactive', emotionRuntime.proactiveTemplate]);
   if (el.presetEmotion) jobs.push(['writePresetEmotion', emotionStateTemplateMd]);
+  if (el.presetEmphasize) jobs.push(['writePresetEmphasize', emphasizeMd]);
   let failed = '';
   for (const [fn, text] of jobs) {
     if (!window.petApi || !window.petApi[fn]) continue;
@@ -10622,12 +10693,13 @@ $('#btn-save-all').onclick = async () => {
   presetTimeDirty = false;
   presetMemoryDirty = false;
   presetEmotionDirty = false;
+  presetEmphasizeDirty = false;
   if (failed) {
     toast('提示词保存失败，详情见下方提示', 'warn');
     consoleLog('错误', `提示词保存失败：${failed}`);
     return;
   }
-  toast('提示词已保存（PROMPT / PERSONA / TIME / MEMORY / PROACTIVE / EMOTION / ACTIONS）', 'accent');
+  toast('提示词已保存（PROMPT / PERSONA / TIME / MEMORY / PROACTIVE / EMOTION / EMPHASIZE / ACTIONS）', 'accent');
   consoleLog('系统', '提示词已保存到 si/app/preset-*.md');
 };
 
@@ -10639,6 +10711,7 @@ loadPresetPersona();
 loadPresetTime();
 loadPresetMemory();
 loadPresetEmotion();
+loadPresetEmphasize();
 loadPresetActionsMd();
 
 // 工具管理页：重新读取磁盘上的 tools.config.json（手改 prompt / schema 后用它刷新）

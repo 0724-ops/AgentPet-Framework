@@ -592,13 +592,16 @@
             <div class="preset-head">
               <div>
                 <h2>系统提示词</h2>
-                <p class="page-desc">
-                  这里的内容全部来自本地 .md，程序不内置任何提示词；文件为空就整块不注入。
-                  保存时人设写回当前角色目录的 <code>persona.md</code>，其余分别写回
-                  <code>si/app/preset-speak.md</code>、<code>preset-time.md</code>、<code>preset-memory.md</code>、<code>preset-actions.md</code>、
-                  <code>preset-proactive.md</code>、<code>preset-emotion.md</code>。
-                  MEMORY 里用 <code>{{MEMORIES}}</code> 代表记忆条目列表；EMOTION 里用 <code>{state}</code> 代表当前状态词（清醒 / 刚睡醒 / 有点困 / 很困 / 刚被叫醒），会跟时间戳一起贴在最新一条用户消息前面；任意提示词里用 <code>{{char}}</code> 代表当前角色名。
-                </p>
+                <details class="preset-help">
+                  <summary>说明：内容来源、占位符与写回路径</summary>
+                  <p class="page-desc">
+                    这里的内容全部来自本地 .md，程序不内置任何提示词；文件为空就整块不注入。
+                    保存时人设写回当前角色目录的 <code>persona.md</code>，其余分别写回
+                    <code>si/app/preset-speak.md</code>、<code>preset-time.md</code>、<code>preset-memory.md</code>、<code>preset-actions.md</code>、
+                    <code>preset-proactive.md</code>、<code>preset-emotion.md</code>、<code>preset-emphasize.md</code>。
+                    MEMORY 里用 <code>{{MEMORIES}}</code> 代表记忆条目列表；EMOTION 里用 <code>{state}</code> 代表当前状态词（清醒 / 刚睡醒 / 有点困 / 很困 / 刚被叫醒），会跟时间戳一起贴在最新一条用户消息前面；EMPHASIZE 只在当轮贴在用户消息末尾，不写进聊天记录、也不进后续上下文；任意提示词里用 <code>{{char}}</code> 代表当前角色名。
+                  </p>
+                </details>
               </div>
               <button class="btn-save" id="btn-save-all">保存</button>
             </div>
@@ -608,6 +611,13 @@
                 <span>在最新一条用户消息前加 [日期 周几 时分]，模型才能判断「今天/现在/上午下午」。只写进请求体，聊天记录里看不到；关掉则完全不注入。</span>
               </div>
               <input type="checkbox" id="set-prompt-time" checked />
+            </label>
+            <label class="setting-row" id="row-prompt-emphasize">
+              <div>
+                <b>发送强调提示词</b>
+                <span>把 EMPHASIZE 贴在最新一条用户消息末尾，提醒模型别漏掉 MOOD。只写进请求体，聊天记录里看不到；关掉则完全不注入。</span>
+              </div>
+              <input type="checkbox" id="set-prompt-emphasize" />
             </label>
             <div class="preset-editor" id="preset-editor">
               <div class="preset-block" data-key="prompt">
@@ -658,6 +668,13 @@
                   <textarea id="preset-emotion" spellcheck="false"></textarea>
                 </div>
               </div>
+              <div class="preset-block" data-key="emphasize">
+                <div class="preset-label"><span>EMPHASIZE</span></div>
+                <div class="preset-input-wrapper">
+                  <div class="line-numbers" data-for="preset-emphasize"></div>
+                  <textarea id="preset-emphasize" spellcheck="false"></textarea>
+                </div>
+              </div>
               <div class="preset-block" data-key="actions">
                 <div class="preset-label"><span>ACTIONS</span></div>
                 <div class="preset-input-wrapper">
@@ -666,7 +683,7 @@
               </div>
               <div class="preset-actions-bar">
                 <span id="preset-speak-path">si/app/preset-speak.md</span>
-                <span>PROMPT / PERSONA / TIME / MEMORY / PROACTIVE 保存时写回各自的 md</span>
+                <span>PROMPT / PERSONA / TIME / MEMORY / PROACTIVE / EMOTION / EMPHASIZE 保存时写回各自的 md</span>
               </div>
               <div class="preset-actions-bar">
                 <span id="preset-actions-path">si/app/preset-actions.md</span>

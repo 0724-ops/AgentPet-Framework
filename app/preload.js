@@ -91,6 +91,9 @@ contextBridge.exposeInMainWorld('petApi', {
   writePresetProactive: (text) => ipcRenderer.invoke('preset:write-proactive', text),
   readPresetEmotion: () => ipcRenderer.invoke('preset:read-emotion'),
   writePresetEmotion: (text) => ipcRenderer.invoke('preset:write-emotion', text),
+  // 强调提示词（preset-emphasize.md）：只在当轮贴在用户消息末尾
+  readPresetEmphasize: () => ipcRenderer.invoke('preset:read-emphasize'),
+  writePresetEmphasize: (text) => ipcRenderer.invoke('preset:write-emphasize', text),
   // 情感状态：每个角色目录一份 emotion.json
   loadEmotion: (payload) => ipcRenderer.invoke('emotion:load', payload),
   saveEmotion: (payload) => ipcRenderer.invoke('emotion:save', payload),
