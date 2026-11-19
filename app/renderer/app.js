@@ -4443,6 +4443,8 @@ function openDeleteCharModal(ch) {
       if (settled) return;
       settled = true;
       mask.hidden = true;
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('paste', onPaste);
       el.charDelOtp.onpaste = null;
       el.charDelOk.onclick = null;
       el.charDelCancel.onclick = null;
@@ -4455,48 +4457,77 @@ function openDeleteCharModal(ch) {
     el.charDelCode.textContent = code;
     el.charDelOtp.textContent = '';
 
-    const inputs = [];
+    const boxes = [];
+    const readBox = (node) => node.dataset.value || '';
+    const writeBox = (node, value) => {
+      const v = value || '';
+      node.dataset.value = v;
+      node.textContent = v;
+    };
     for (let i = 0; i < code.length; i += 1) {
-      const input = document.createElement('input');
-      input.className = 'char-del-otp-input';
-      input.type = 'text';
-      input.autocomplete = 'off';
-      input.spellcheck = false;
-      input.maxLength = 1;
-      input.setAttribute('aria-label', `验证码第 ${i + 1} 位`);
-      el.charDelOtp.appendChild(input);
-      inputs.push(input);
+      const box = document.createElement('div');
+      box.className = 'char-del-otp-input';
+      box.tabIndex = 0;
+      box.setAttribute('role', 'textbox');
+      box.setAttribute('aria-readonly', 'true');
+      box.setAttribute('aria-label', `验证码第 ${i + 1} 位`);
+      el.charDelOtp.appendChild(box);
+      boxes.push(box);
     }
 
     const sync = () => {
-      inputs.forEach((node) => node.classList.toggle('filled', !!node.value));
-      el.charDelOk.disabled = inputs.map((node) => node.value).join('') !== code;
+      boxes.forEach((node) => node.classList.toggle('filled', !!readBox(node)));
+      el.charDelOk.disabled = boxes.map(readBox).join('') !== code;
     };
 
-    inputs.forEach((input, index) => {
-      input.addEventListener('input', () => {
-        // 输入法可能一次送来多个字符，只留最后一个
-        input.value = input.value.replace(/\s+/g, '').slice(-1);
-        if (input.value && index < inputs.length - 1) inputs[index + 1].focus();
-        sync();
-      });
-      input.addEventListener('keydown', (e) => {
-        // 长按按键会连续触发 keydown：只接受第一次，避免一个字符连填好几格
-        if (e.repeat && e.key !== 'Backspace' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+    // 长按产生的系统连键：keyup 之前同一个键只认一次
+    let heldKey = '';
+    // 极短时间内收到同一个字符（系统/输入法重复派发）也只认一次
+    let lastChar = '';
+    let lastCharAt = 0;
+    const onKeyUp = () => {
+      heldKey = '';
+    };
+    window.addEventListener('keyup', onKeyUp);
+
+    boxes.forEach((box, index) => {
+      box.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        // 验证码只认英文/数字：输入法组合态直接拦掉，避免一次提交多个字符
+        if (e.isComposing) {
           e.preventDefault();
           return;
         }
-        if (e.key === 'Backspace' && !input.value && index > 0) {
+        // 单字符自己写入：绕开输入法组合态与系统连键，一次按键只填一格
+        if (e.key.length === 1) {
           e.preventDefault();
-          inputs[index - 1].value = '';
-          inputs[index - 1].focus();
+          if (e.key === ' ' || e.repeat || e.key === heldKey) return;
+          const now = performance.now();
+          if (e.key === lastChar && now - lastCharAt < 50) return;
+          heldKey = e.key;
+          lastChar = e.key;
+          lastCharAt = now;
+          writeBox(box, e.key);
+          if (index < boxes.length - 1) boxes[index + 1].focus();
           sync();
+          return;
+        }
+        if (e.key === 'Backspace') {
+          e.preventDefault();
+          if (readBox(box)) {
+            writeBox(box, '');
+            sync();
+          } else if (index > 0) {
+            writeBox(boxes[index - 1], '');
+            boxes[index - 1].focus();
+            sync();
+          }
         } else if (e.key === 'ArrowLeft' && index > 0) {
           e.preventDefault();
-          inputs[index - 1].focus();
-        } else if (e.key === 'ArrowRight' && index < inputs.length - 1) {
+          boxes[index - 1].focus();
+        } else if (e.key === 'ArrowRight' && index < boxes.length - 1) {
           e.preventDefault();
-          inputs[index + 1].focus();
+          boxes[index + 1].focus();
         } else if (e.key === 'Enter' && !el.charDelOk.disabled) {
           finish(true);
         } else if (e.key === 'Escape') {
@@ -4505,20 +4536,21 @@ function openDeleteCharModal(ch) {
           finish(false);
         }
       });
-      input.addEventListener('focus', () => input.select());
     });
 
-    el.charDelOtp.onpaste = (e) => {
+    el.charDelOtp.onpaste = null;
+    const onPaste = (e) => {
       const text = ((e.clipboardData || window.clipboardData).getData('text') || '').replace(/\s+/g, '');
       if (!text) return;
       e.preventDefault();
-      const chars = Array.from(text).slice(0, inputs.length);
-      inputs.forEach((node, i) => {
-        node.value = chars[i] || '';
+      const chars = Array.from(text).slice(0, boxes.length);
+      boxes.forEach((node, i) => {
+        writeBox(node, chars[i] || '');
       });
-      (inputs[chars.length] || inputs[inputs.length - 1]).focus();
+      (boxes[chars.length] || boxes[boxes.length - 1]).focus();
       sync();
     };
+    window.addEventListener('paste', onPaste);
 
     el.charDelOk.onclick = () => {
       if (!el.charDelOk.disabled) finish(true);
@@ -4531,7 +4563,7 @@ function openDeleteCharModal(ch) {
 
     el.charDelOk.disabled = true;
     mask.hidden = false;
-    requestAnimationFrame(() => inputs[0] && inputs[0].focus());
+    requestAnimationFrame(() => boxes[0] && boxes[0].focus());
   });
 }
 
