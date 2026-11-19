@@ -2829,21 +2829,22 @@ function initEmotionPanel() {
 
 // 面板「实时状态」里那几句：当前实际会发多少轮、多少由情绪挑、优先回忆哪些标签
 function emotionContextLines() {
+  const cap = Number(settings.historyWindow) >= 100 ? 'MAX' : `${settings.historyWindow}`;
   if (settings.emotionContext !== true) {
-    return [`当前上下文窗口 ${settings.historyWindow} 轮（情绪化上下文未开启）`];
+    return [`当前上下文窗口 ${cap}（情绪化上下文未开启）`];
   }
   const plan = currentEmotionContextPlan();
   const pct = Math.round((plan.weight || 0) * 100);
   if (plan.available < MIN_CONTEXT_TURNS) {
-    return [`当前共 ${plan.available} 轮对话（不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送）`];
+    return [`当前共 ${plan.available} 轮对话（上限 ${cap}，不足 ${MIN_CONTEXT_TURNS} 轮，暂按连续窗口发送）`];
   }
   if (settings.emotionContextPick === false) {
-    return [`当前共 ${plan.available} 轮对话，本次注入 ${plan.total} 轮（情绪权重 ${pct}%），全部连续`];
+    return [`当前共 ${plan.available} 轮对话（上限 ${cap}），本次注入 ${plan.total} 轮（情绪权重 ${pct}%），全部连续`];
   }
   if (plan.available <= plan.total) {
-    return [`当前共 ${plan.available} 轮对话，本次注入 ${plan.total} 轮（情绪权重 ${pct}%），全部为最近连续对话`];
+    return [`当前共 ${plan.available} 轮对话（上限 ${cap}），本次注入 ${plan.total} 轮（情绪权重 ${pct}%），全部为最近连续对话`];
   }
-  const lines = [`当前共 ${plan.available} 轮对话，本次注入 ${plan.total} 轮（情绪权重 ${pct}%），其中 ${plan.fill} 轮由情绪决定（候选 ${plan.candidates} 轮）`];
+  const lines = [`当前共 ${plan.available} 轮对话（上限 ${cap}），本次注入 ${plan.total} 轮（情绪权重 ${pct}%），其中 ${plan.fill} 轮由情绪决定（候选 ${plan.candidates} 轮）`];
   lines.push(plan.labels.length
     ? `优先回忆：${plan.labels.join(' · ')}`
     : '优先回忆：暂无（旧对话还没有情绪标签）');
@@ -4480,6 +4481,11 @@ function openDeleteCharModal(ch) {
         sync();
       });
       input.addEventListener('keydown', (e) => {
+        // 长按按键会连续触发 keydown：只接受第一次，避免一个字符连填好几格
+        if (e.repeat && e.key !== 'Backspace' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+          e.preventDefault();
+          return;
+        }
         if (e.key === 'Backspace' && !input.value && index > 0) {
           e.preventDefault();
           inputs[index - 1].value = '';
@@ -8852,7 +8858,11 @@ function toggleCharDetail(id) {
   charDetailId = charDetailId === id ? '' : id;
   charDetailState = null;
   renderCharDetail();
-  if (charDetailId) void loadCharDetail(charDetailId);
+  if (charDetailId) {
+    const content = $('.settings-content');
+    if (content) content.scrollTop = 0;
+    void loadCharDetail(charDetailId);
+  }
 }
 
 async function loadCharDetail(id) {
@@ -8883,15 +8893,21 @@ async function refreshCharDetail() {
 }
 
 function renderCharDetail() {
-  const box = $('#char-detail');
-  if (!box) return;
+  const browser = $('#char-browser');
+  const page = $('#char-detail');
+  const box = $('#char-detail-body');
+  const actionsCard = $('#char-actions-card');
+  if (!page || !box) return;
   const ch = findCharacter(charDetailId);
   if (!charDetailId || !ch) {
-    box.hidden = true;
+    page.hidden = true;
     box.textContent = '';
+    if (browser) browser.hidden = false;
+    if (actionsCard) actionsCard.hidden = true;
     return;
   }
-  box.hidden = false;
+  if (browser) browser.hidden = true;
+  page.hidden = false;
   box.textContent = '';
 
   const state = charDetailState || {};
@@ -8899,15 +8915,46 @@ function renderCharDetail() {
   const isActive = !!(activeCharacter && activeCharacter.id === ch.id);
   const broken = !!ch.broken || !!(info && info.broken);
 
+  // 头部：左边图标与角色信息，右边操作，窄窗口自动换行
   const head = document.createElement('div');
-  head.className = 'ext-card-head';
-  const title = document.createElement('div');
-  const name = document.createElement('b');
+  head.className = 'plugin-detail-head char-detail-head';
+
+  const icon = document.createElement('div');
+  icon.className = 'plugin-detail-icon';
+  const initial = (ch.name || ch.id).slice(0, 1);
+  const iconUrl = ch.icon ? configPath(ch.icon) : '';
+  if (iconUrl) {
+    const img = document.createElement('img');
+    img.alt = ch.name || ch.id;
+    img.draggable = false;
+    // 图标缺失 / 加载失败时退回首字
+    img.onerror = () => {
+      icon.textContent = initial;
+      icon.classList.add('char-hero-letter');
+    };
+    img.src = iconUrl;
+    icon.appendChild(img);
+  } else {
+    icon.textContent = initial;
+    icon.classList.add('char-hero-letter');
+  }
+
+  const titleWrap = document.createElement('div');
+  titleWrap.className = 'char-detail-title';
+  const name = document.createElement('h2');
   name.textContent = ch.name || ch.id;
   const badge = document.createElement('span');
   badge.className = 'ext-current' + (broken ? ' danger' : '');
   badge.textContent = broken ? '入口缺失' : isActive ? '当前角色' : '未启用';
-  title.append(name, badge);
+  titleWrap.append(name, badge);
+
+  const idLine = document.createElement('div');
+  idLine.className = 'plugin-detail-id';
+  idLine.textContent = `${ch.id}${ch.version ? ` · v${ch.version}` : ''}`;
+
+  const meta = document.createElement('div');
+  meta.className = 'char-detail-meta';
+  meta.append(titleWrap, idLine);
 
   const actions = document.createElement('div');
   actions.className = 'ext-actions';
@@ -8942,6 +8989,9 @@ function renderCharDetail() {
       consoleLog('系统', `已导出角色包：${r.path}`);
     },
   );
+  if (!isActive && !broken) {
+    addBtn('切换到此角色', 'btn-save', () => void onCharacterCard(ch), characterSwitching);
+  }
   addBtn(
     '删除',
     'btn-ghost-sm danger',
@@ -8961,13 +9011,8 @@ function renderCharDetail() {
     isActive,
     isActive ? '当前角色不可删除，请先切换到其他角色' : '',
   );
-  addBtn('关闭', 'btn-ghost-sm', () => {
-    charDetailId = '';
-    charDetailState = null;
-    renderCharDetail();
-  });
 
-  head.append(title, actions);
+  head.append(icon, meta, actions);
   box.appendChild(head);
 
   const grid = document.createElement('div');
@@ -9013,6 +9058,13 @@ function renderCharDetail() {
   addRow('状态', broken ? '入口缺失，无法切换' : isActive ? '当前使用中' : '可切换', broken ? 'danger' : '');
   box.appendChild(grid);
 
+  if (!isActive && !broken) {
+    const tip = document.createElement('p');
+    tip.className = 'ext-hint';
+    tip.textContent = '下面的动作库为只读统计；导入、刷新与打开目录只作用于当前角色，切换到此角色后可管理。';
+    box.appendChild(tip);
+  }
+
   const notes = [];
   if (state.error) notes.push({ text: state.error, kind: 'danger' });
   ((info && info.issues) || []).forEach((text) => notes.push({ text, kind: 'danger' }));
@@ -9028,26 +9080,61 @@ function renderCharDetail() {
     });
     box.appendChild(list);
   }
+
+  // 动作卡：当前角色可管理；其他角色只读显示动作数量与来源
+  if (actionsCard) {
+    actionsCard.hidden = false;
+
+    const countEl = $('#ext-actions-current');
+    if (countEl) {
+      const readOnly = isActive ? null : info && info.actions ? Number(info.actions.count) : null;
+      if (isActive) {
+        countEl.textContent = `${actions.length} 个动作`;
+      } else if (state.loading) {
+        countEl.textContent = '统计中…';
+      } else if (Number.isFinite(readOnly)) {
+        countEl.textContent = `${readOnly} 个动作（只读）`;
+      } else {
+        countEl.textContent = '— 个动作';
+      }
+    }
+
+    const hintEl = $('#ext-actions-hint');
+    if (hintEl) {
+      const src = ch.actionsSource || {};
+      if (!isActive) {
+        hintEl.textContent = '该角色的动作库只读显示；导入、刷新与打开目录只作用于当前角色，切换到此角色后即可管理。';
+      } else if (src.mode === 'index') {
+        hintEl.textContent = `来源：动作清单 ${src.index || 'clips/_index.json'}。清单里的名字就是全部可用动作，不再扫描 .glb；时长与循环标记也从清单读取。`;
+      } else {
+        const missing = actions.filter((a) => a.missing).length;
+        hintEl.textContent = `来源：clips 目录里的 .glb${missing ? `（${missing} 条清单记录缺文件，不会出现在模型的动作清单里）` : ''}。也可以直接导入 .json 动作列表。`;
+      }
+    }
+
+    ['btn-import-actions', 'btn-import-action-list', 'btn-refresh-actions', 'btn-open-clips'].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = !isActive;
+      btn.title = isActive ? '' : '仅当前角色可管理动作';
+    });
+  }
 }
 
 // ---- 角色页（动作 / 角色卡片）
 function renderExtensionPage() {
   renderCharacterCards();
   renderCharDetail();
+}
 
-  const actionsEl = $('#ext-actions-current');
-  if (actionsEl) actionsEl.textContent = `${actions.length} 个动作`;
 
-  const actionsHint = $('#ext-actions-hint');
-  if (actionsHint) {
-    const src = (activeCharacter && activeCharacter.actionsSource) || {};
-    if (src.mode === 'index') {
-      actionsHint.textContent = `来源：动作清单 ${src.index || 'clips/_index.json'}。清单里的名字就是全部可用动作，不再扫描 .glb；时长与循环标记也从清单读取。`;
-    } else {
-      const missing = actions.filter((a) => a.missing).length;
-      actionsHint.textContent = `来源：clips 目录里的 .glb${missing ? `（${missing} 条清单记录缺文件，不会出现在模型的动作清单里）` : ''}。也可以直接导入 .json 动作列表。`;
-    }
-  }
+const btnCharBack = $('#btn-char-back');
+if (btnCharBack) {
+  btnCharBack.onclick = () => {
+    charDetailId = '';
+    charDetailState = null;
+    renderCharDetail();
+  };
 }
 
 $('#btn-import-actions').onclick = async () => {

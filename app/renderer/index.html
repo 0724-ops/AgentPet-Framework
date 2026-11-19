@@ -1112,39 +1112,48 @@
 
           <!-- 角色 -->
           <div class="settings-page" data-page="extensions">
-            <h2>角色</h2>
-            <p class="page-desc">切换当前角色。每个角色自带内核、动作库与人设，互不影响。</p>
+            <div id="char-browser">
+              <h2>角色</h2>
+              <p class="page-desc">切换当前角色。每个角色自带内核、动作库与人设，互不影响。</p>
 
-            <label class="setting-row">
-              <div><b>切换角色时归档当前会话</b><span>开启后，点击其他角色卡片会先把当前会话存入「设置 → 归档」再切换；关闭则直接切换，当前会话仍留在原角色</span></div>
-              <input type="checkbox" id="set-archive-on-switch" />
-            </label>
+              <label class="setting-row">
+                <div><b>切换角色时归档当前会话</b><span>开启后，点击其他角色卡片会先把当前会话存入「设置 → 归档」再切换；关闭则直接切换，当前会话仍留在原角色</span></div>
+                <input type="checkbox" id="set-archive-on-switch" />
+              </label>
 
-            <label class="setting-row">
-              <div><b>切换角色时重建动作预设</b><span>开启后，切换角色会自动按一次「从动作库重建」，用新角色的动作清单覆盖 preset-actions.md；关闭则保留现有预设不动</span></div>
-              <input type="checkbox" id="set-rebuild-actions-on-switch" />
-            </label>
+              <label class="setting-row">
+                <div><b>切换角色时重建动作预设</b><span>开启后，切换角色会自动按一次「从动作库重建」，用新角色的动作清单覆盖 preset-actions.md；关闭则保留现有预设不动</span></div>
+                <input type="checkbox" id="set-rebuild-actions-on-switch" />
+              </label>
 
-            <!-- 角色卡片：末尾固定一张「导入」 -->
-            <div class="char-row" id="char-row"></div>
+              <!-- 角色卡片：末尾固定一张「导入」 -->
+              <div class="char-row" id="char-row"></div>
+            </div>
 
-            <!-- 角色详情：点卡片右上角「⋯」展开，不触发切换 -->
-            <div class="ext-card char-detail" id="char-detail" hidden></div>
+            <!-- 角色详情：点卡片右上角「⋯」进入，角色信息与动作都在这一页 -->
+            <div id="char-detail" hidden>
+              <button class="plugin-back" id="btn-char-back" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                <span>角色</span>
+              </button>
 
-            <div class="ext-card">
-              <div class="ext-card-head">
-                <div>
-                  <b>动作</b>
-                  <span class="ext-current" id="ext-actions-current">0 个动作</span>
+              <div class="ext-card char-detail" id="char-detail-body"></div>
+
+              <div class="ext-card" id="char-actions-card" hidden>
+                <div class="ext-card-head">
+                  <div>
+                    <b>动作</b>
+                    <span class="ext-current" id="ext-actions-current">0 个动作</span>
+                  </div>
+                  <div class="ext-actions">
+                    <button class="btn-save" id="btn-import-actions">导入动作 (.glb)</button>
+                    <button class="btn-ghost-sm" id="btn-import-action-list">导入动作列表 (.json)</button>
+                    <button class="btn-ghost-sm" id="btn-refresh-actions">刷新列表</button>
+                    <button class="btn-ghost-sm" id="btn-open-clips">打开目录</button>
+                  </div>
                 </div>
-                <div class="ext-actions">
-                  <button class="btn-save" id="btn-import-actions">导入动作 (.glb)</button>
-                  <button class="btn-ghost-sm" id="btn-import-action-list">导入动作列表 (.json)</button>
-                  <button class="btn-ghost-sm" id="btn-refresh-actions">刷新列表</button>
-                  <button class="btn-ghost-sm" id="btn-open-clips">打开目录</button>
-                </div>
+                <p class="ext-hint" id="ext-actions-hint">支持多选 <code>.glb</code>。动作名、时长、循环标记优先读取 GLB 的 extras，缺失时按文件名推断；导入后自动登记到 <code>_index.json</code>。</p>
               </div>
-              <p class="ext-hint" id="ext-actions-hint">支持多选 <code>.glb</code>。动作名、时长、循环标记优先读取 GLB 的 extras，缺失时按文件名推断；导入后自动登记到 <code>_index.json</code>。</p>
             </div>
           </div>
           </div>

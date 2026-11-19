@@ -5428,9 +5428,58 @@ html[data-visual-off] .stage {
   stroke-linecap: round;
 }
 
-/* 角色详情 */
+/* 角色详情：列表与详情二选一显示 */
 .char-detail[hidden] {
   display: none;
+}
+
+#char-detail > .plugin-back {
+  margin-bottom: 6px;
+}
+
+.char-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.char-detail-title h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+/* 角色详情头部：图标 + 信息在左，操作在右，窄窗口自动换行
+   选择器带上 .plugin-detail-head，避免被后面插件详情页的列布局覆盖 */
+.plugin-detail-head.char-detail-head {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 14px;
+}
+
+.char-detail-meta {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.char-detail-head .ext-actions {
+  flex: 0 0 auto;
+}
+
+.char-detail-head .plugin-detail-icon {
+  flex: none;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.char-hero-letter {
+  font-size: 22px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .char-detail-grid {
@@ -5488,6 +5537,17 @@ html[data-visual-off] .stage {
 .char-detail .btn-ghost-sm:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* 非当前角色的动作卡：按钮只读置灰 */
+#char-actions-card button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#char-actions-card .btn-save:disabled,
+#char-actions-card .btn-save:disabled:hover {
+  background: var(--accent);
 }
 
 .btn-ghost-sm.danger:hover:not(:disabled) {

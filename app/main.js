@@ -2528,12 +2528,35 @@ async function validateCharacter(id) {
   if (!char.dir || !fs.existsSync(char.dir)) issues.push('角色目录不存在');
 
   const src = char.actionsSource || {};
+  // 动作数量只读统计：让角色详情能显示非当前角色的动作库规模
+  let actionCount = 0;
   if (src.mode === 'index') {
     const idxAbs = src.index ? appPathToFile(src.index) : '';
-    if (!idxAbs || !fs.existsSync(idxAbs)) warnings.push(`动作清单缺失：${src.index || '(未配置)'}`);
+    if (!idxAbs || !fs.existsSync(idxAbs)) {
+      warnings.push(`动作清单缺失：${src.index || '(未配置)'}`);
+    } else {
+      const raw = readJsonSafe(idxAbs);
+      const entries = Array.isArray(raw) ? raw : raw && Array.isArray(raw.actions) ? raw.actions : [];
+      const names = new Set();
+      entries.forEach((entry) => {
+        if (!entry) return;
+        const file = String(entry.file || '');
+        const name = String(entry.name || file.replace(/\.glb$/i, '')).trim();
+        if (name) names.add(name);
+      });
+      actionCount = names.size;
+    }
   } else {
     const clipAbs = char.clips ? appPathToFile(char.clips) : '';
-    if (!clipAbs || !fs.existsSync(clipAbs)) warnings.push('动作目录为空，角色仍可聊天');
+    if (!clipAbs || !fs.existsSync(clipAbs)) {
+      warnings.push('动作目录为空，角色仍可聊天');
+    } else {
+      try {
+        actionCount = fs.readdirSync(clipAbs).filter((f) => f.toLowerCase().endsWith('.glb')).length;
+      } catch (_) {
+        actionCount = 0;
+      }
+    }
   }
 
   let manifest = null;
@@ -2570,6 +2593,10 @@ async function validateCharacter(id) {
     dir: char.dir || '',
     entry: entryRel,
     manifest,
+    actions: {
+      mode: src.mode === 'index' ? 'index' : 'files',
+      count: actionCount,
+    },
   };
 }
 
