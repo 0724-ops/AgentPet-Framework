@@ -347,6 +347,18 @@ const panelWindows = new Map();
 //   characters/...  → <DataRoot>/characters/...（外部角色包）
 //   其余            → <SI_ROOT>/...
 // 这样渲染层和内核都用同一个源，外部角色的相对路径（./vendor、./assets）也能正常加载。
+// app:// 下的文本资源（html/css/js）不走 Chromium 磁盘缓存：
+// net.fetch(file://) 会被缓存住，导致改了前端文件、重启后界面还是旧的。
+const APP_TEXT_MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.md': 'text/markdown; charset=utf-8',
+};
+
 function registerAppProtocol() {
   protocol.handle('app', async (request) => {
     try {
@@ -363,6 +375,12 @@ function registerAppProtocol() {
       }
       if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
         return new Response('not found', { status: 404 });
+      }
+      const mime = APP_TEXT_MIME[path.extname(file).toLowerCase()];
+      if (mime) {
+        // 直接读盘并显式 no-store，避免样式/脚本被缓存成旧版本
+        const body = await fs.promises.readFile(file);
+        return new Response(body, { headers: { 'content-type': mime, 'cache-control': 'no-store' } });
       }
       return net.fetch(pathToFileURL(file).toString());
     } catch (err) {
@@ -3398,7 +3416,7 @@ if (!hasSingleInstance) {
 
 app
   .whenReady()
-  .then(() => {
+  .then(async () => {
     if (!hasSingleInstance) return;
     // 还没定数据根（首启 / 目录丢失）：先引导选目录，选定后重启进程让 userData 生效
     if (!DATA_ROOT) {
@@ -3428,6 +3446,12 @@ app
       callback(isMediaPermission(permission));
     });
     defaultSession.setPermissionCheckHandler((_wc, permission) => isMediaPermission(permission));
+    // 清掉上一次运行留下的 app:// 缓存，防止前端文件更新后仍加载旧页面
+    try {
+      await defaultSession.clearCache();
+    } catch (_) {
+      /* 清缓存失败不影响启动 */
+    }
     registerAppProtocol();
     registerIpc();
     createWindow();

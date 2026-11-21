@@ -2732,23 +2732,35 @@ html[data-visual-off] .stage {
   padding-right: 32px;
 }
 
-/* 预设页说明：默认折叠，样式对齐「工具定义」那种下拉卡片 */
+.preset-head > div {
+  min-width: 0;
+}
+
 .preset-help {
-  margin-top: 8px;
   max-width: 720px;
-  padding: 2px 10px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.018);
+  margin-top: 10px;
 }
 
 .preset-help > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
   list-style: none;
   font-size: 11px;
-  line-height: 1.9;
-  color: #aeb6c8;
+  line-height: 1.5;
+  color: #8f99ad;
+  user-select: none;
   outline: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.preset-help > summary:hover {
+  background: rgba(255, 255, 255, 0.065);
+  color: #c3cad8;
 }
 
 .preset-help > summary::-webkit-details-marker {
@@ -2757,16 +2769,29 @@ html[data-visual-off] .stage {
 
 .preset-help > summary::before {
   content: '▸';
-  margin-right: 5px;
-  opacity: 0.6;
+  font-size: 9px;
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+
+.preset-help[open] > summary {
+  background: rgba(255, 255, 255, 0.05);
+  color: #c3cad8;
 }
 
 .preset-help[open] > summary::before {
-  content: '▾';
+  transform: rotate(90deg);
 }
 
 .preset-help .page-desc {
-  margin: 2px 0 0;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.022);
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: #9aa4b8;
 }
 
 .preset-editor {
@@ -5664,7 +5689,8 @@ html[data-visual-off] .stage {
 .proc-body {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  /* 按钮组现在已经挪到标题右侧，面板改为向右展开，避免左侧出屏 */
+  left: 0;
   z-index: 50;
   width: 400px;
   max-height: 360px;
@@ -6041,12 +6067,48 @@ html[data-visual-off] .stage {
   margin-top: 8px;
 }
 
+/* ---- 插件页头部：左边标题 + 后台进程/目录/刷新，右边只放「添加插件」 ---- */
+.plugin-head {
+  padding-right: 32px;
+  /* 供容器查询使用：窗口变窄时按需丢弃右侧的下拉箭头 */
+  container-type: inline-size;
+}
+
+.plugin-head-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: nowrap;
+}
+
+.plugin-head-row h2 {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.plugin-add-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* 放不下时先舍弃「更多」下拉箭头，只保留添加插件 */
+@container (max-width: 560px) {
+  .plugin-add-group #btn-plugin-more {
+    display: none;
+  }
+}
+
 /* ---- 插件页右上角：刷新 + 拆分的「+ 添加插件」 ---- */
 .plugin-actions-bar {
   position: relative;
   align-items: center;
   flex-wrap: nowrap;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
 .plugin-icon-btn {

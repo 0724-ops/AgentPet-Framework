@@ -593,7 +593,7 @@
               <div>
                 <h2>系统提示词</h2>
                 <details class="preset-help">
-                  <summary>说明：内容来源、占位符与写回路径</summary>
+                  <summary>使用说明</summary>
                   <p class="page-desc">
                     这里的内容全部来自本地 .md，程序不内置任何提示词；文件为空就整块不注入。
                     保存时人设写回当前角色目录的 <code>persona.md</code>，其余分别写回
@@ -1001,14 +1001,10 @@
           <!-- 插件管理 -->
           <div class="settings-page" data-page="plugins">
             <div id="plugin-browser">
-              <div class="preset-head">
-                <div>
+              <div class="plugin-head">
+                <div class="plugin-head-row">
                   <h2>插件管理</h2>
-                  <p class="page-desc">
-                    第三方插件跑在独立进程里，与内核隔离。插件包必须是 zip；导入时主进程会校验插件 ID、工具名唯一性和配置文件。
-                  </p>
-                </div>
-                <div class="ext-actions plugin-actions-bar">
+                  <div class="ext-actions plugin-actions-bar">
                   <div class="proc-panel is-collapsed" id="proc-panel">
                     <button class="proc-head" id="proc-head" type="button" aria-expanded="false" aria-label="后台进程">
                       <span class="proc-summary" id="proc-summary">进程状态读取中…</span>
@@ -1031,6 +1027,8 @@
                       <path d="M20 4v5h-5" />
                     </svg>
                   </button>
+                  </div>
+                  <div class="plugin-add-group">
                   <button class="btn-ghost-sm plugin-add-btn" id="btn-plugin-import">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                     添加插件
@@ -1043,6 +1041,10 @@
                     <button class="split-menu-item" id="btn-plugin-clear-trash">清空回收目录</button>
                   </div>
                 </div>
+                </div>
+                <p class="page-desc">
+                  第三方插件跑在独立进程里，与内核隔离。插件包必须是 zip；导入时主进程会校验插件 ID、工具名唯一性和配置文件。
+                </p>
               </div>
               <p class="plugin-root-line">插件目录：<span id="plugin-root-path">读取中…</span></p>
               <div class="plugin-list" id="plugin-list"></div>
