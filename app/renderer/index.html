@@ -753,6 +753,34 @@
               <div><b>自动朗读</b><span>每轮助手回复结束后自动念出来</span></div>
               <input type="checkbox" id="set-auto-read" />
             </label>
+
+            <div class="preset-head tts-head">
+              <div>
+                <h2>嘴型同步</h2>
+                <p class="page-desc">按文本算口型，不分析音频。关闭时不向内核写任何口型数据；切换模式从下一条回复生效。</p>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>同步模式</b><span id="lipsync-state">检测中…</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-lipsync-mode" min="0" max="2" step="1" value="0" />
+                <b id="set-lipsync-mode-v">关闭</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>口型强度</b><span>幅度上限，过大容易穿模</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-lipsync-intensity" min="0.4" max="1.2" step="0.05" value="0.9" />
+                <b id="set-lipsync-intensity-v">0.90</b>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>对齐延迟</b><span>仅「语音同步」生效，正值让口型等声音</span></div>
+              <div class="slider-wrap">
+                <input type="range" id="set-lipsync-delay" min="-100" max="100" step="10" value="0" />
+                <b id="set-lipsync-delay-v">0ms</b>
+              </div>
+            </div>
           </div>
 
           <!-- 动态注入：记忆 + 情感合并，顶部切换「记忆 / 情绪 / 选项」 -->

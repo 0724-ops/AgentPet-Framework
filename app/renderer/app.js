@@ -14,6 +14,8 @@ import { parseCompressResult } from './compress-result.js';
 import { createEmotionClassifier } from '../emotion/classify.js';
 // 情绪化上下文：注入轮数 / 情绪补齐的纯计算（app/emotion/context-window.js）
 import { planHistoryWindow, pickTurnsByMood, MIN_CONTEXT_TURNS } from '../emotion/context-window.js';
+// 文字驱动嘴型同步：壳层按文本算口型轨道，经语义契约交给内核
+import { createLipSyncEngine } from './lipsync/clock.js';
 const E = (typeof window !== 'undefined' && window.AgentPetEmotionEngine)
   || (typeof globalThis !== 'undefined' && globalThis.AgentPetEmotionEngine);
 
@@ -60,6 +62,10 @@ const settings = store.get('agentpet.settings', {
   // 系统语音（Web Speech）默认开启；语音插件可用时自动接管
   ttsWeb: true,
   ttsSpeed: 1,
+  // 嘴型同步：off / stream / voice（默认关闭）；强度与延迟在语音页调节
+  lipSyncMode: 'off',
+  lipSyncIntensity: 0.9,
+  lipSyncDelay: 0,
   bloomOn: true,
   bloomStrength: 0.15,
   bloomThreshold: 0.8,
@@ -804,6 +810,14 @@ class QueueManager {
 
 // ------------------------------------------------------------------ 内核接入
 let pet = null;
+
+// 嘴型同步引擎：能力在 initKernel 里探测；这里只读取设置，不碰内核内部
+const lipSync = createLipSyncEngine({
+  getPet: () => pet,
+  getSettings: () => settings,
+  isVoiceAvailable: () => ttsEngine() !== 'off',
+  onState: (state) => syncLipSyncUi(state),
+});
 let queue = null;
 let actions = [];
 let kernelReady = false;
@@ -1161,6 +1175,8 @@ function initKernel(w) {
   if (kernelReady) return;
   kernelReady = true;
   pet = w.pet;
+  // 探测内核是否支持嘴型契约：老内核没有 lipSync* / setMouth 时自动禁用
+  lipSync.attach(pet);
 
   // 换了内核（或重载）后要重新量模型：基准高度变了，缩放中心的补偿量也得重算
   modelSpan = null;
@@ -5870,12 +5886,15 @@ async function runAgent() {
       };
       chatState.messages.push(msg);
       scheduleConsoleRender();
+      // 嘴型同步：模式在本条回复开始时锁定，中途切换设置只影响下一条
+      lipSync.beginReply();
 
       // 伪工具统一入口：SPEAK 的台词留下来，MEM_MARK 整段剥掉只留编号
       let fedChars = 0;
       const pseudo = createPseudoToolParser({
         onText: (chunk) => {
           msg.text += chunk;
+          lipSync.feedText(chunk);
         },
         onMemMark: (wrong) => {
           if (!wrong.length) return;
@@ -5921,13 +5940,18 @@ async function runAgent() {
         msg.phase = '';
         msg.thinkOpen = false;
         msg.text = msg.text || `（连接失败：${err && err.message ? err.message : err}）`;
+        lipSync.stop();
         consoleLog('错误', `对话失败：${err && err.message ? err.message : err}`);
         persist();
         renderChat();
         renderConsole();
         return;
       }
-      if (session !== chatSession) return; // 已被终止，别再往后写
+      if (session !== chatSession) {
+        // 已被终止：嘴部轨道也一起收掉，别让旧回复继续动
+        lipSync.stop();
+        return;
+      }
       turnCompleted = true;
       msg.streaming = false;
       msg.phase = '';
@@ -5936,6 +5960,8 @@ async function runAgent() {
       // 兜底：有些 mock / 非流式实现只在最终结果里给 content
       if (acc.content && acc.content.length > fedChars) pseudo.feed(acc.content.slice(fedChars));
       const parsed = pseudo.flush();
+      // 文本已经全部到齐：流式模式补跑剩余缓冲后收尾
+      lipSync.endReply();
       // 裁掉标记前后的换行 / 空白：否则 pre-wrap 会把它们渲染成一屏空行
       msg.text = tidyChatText(parsed.text);
       msg.speakText = tidyChatText(parsed.speech);
@@ -7723,6 +7749,7 @@ const tts = {
   synthesizing: false,
   pluginAvailable: false,
   pluginName: '',
+  seekTimer: null, // 插件音频：每 100ms 用 audio.currentTime 校准口型
 };
 
 const SPEAK_ICON =
@@ -7882,6 +7909,9 @@ function setTtsMuted(next) {
   } else if (tts.kind === 'plugin' && tts.audio) {
     tts.audio.muted = tts.muted;
   }
+  // 口型跟着音频一起暂停 / 恢复
+  if (tts.muted) lipSync.voicePause();
+  else lipSync.voiceResume();
   refreshSpeakButtons();
 }
 
@@ -7894,6 +7924,11 @@ function toggleSpeak(m) {
 }
 
 function stopTtsPlayback() {
+  lipSync.voiceStop();
+  if (tts.seekTimer) {
+    clearInterval(tts.seekTimer);
+    tts.seekTimer = null;
+  }
   if (tts.kind === 'web' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
@@ -7934,6 +7969,21 @@ function speakWithWeb(content, msgSeq) {
   tts.msgSeq = msgSeq;
   tts.muted = false;
   refreshSpeakButtons();
+  // 语音同步模式：先把文本时间轴装好，等 onstart 再开始播口型
+  let started = false;
+  const voiceReady = lipSync.beginVoice(content, { id: `web-${msgSeq == null ? Date.now() : msgSeq}` });
+  const tryVoicePlay = (ok) => {
+    if (ok && started && tts.utterance === utter && !tts.muted) lipSync.voicePlay('web');
+  };
+  void voiceReady.then(tryVoicePlay);
+  utter.onstart = () => {
+    started = true;
+    void voiceReady.then(tryVoicePlay);
+  };
+  // 系统语音的分词回调：用来把口型拉回当前朗读位置
+  utter.onboundary = (e) => {
+    if (e && typeof e.charIndex === 'number') lipSync.voiceBoundary(e.charIndex, content.length);
+  };
   utter.onend = () => {
     if (tts.utterance === utter) stopTtsPlayback();
   };
@@ -7948,7 +7998,7 @@ function speakWithWeb(content, msgSeq) {
   }
 }
 
-function speakWithPluginAudio(res, msgSeq) {
+function speakWithPluginAudio(res, msgSeq, content) {
   const bin = atob(res.audio);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -7962,12 +8012,30 @@ function speakWithPluginAudio(res, msgSeq) {
   tts.msgSeq = msgSeq;
   tts.muted = false;
   refreshSpeakButtons();
-  tts.audio.onended = () => stopTtsPlayback();
-  tts.audio.onerror = () => {
-    toast('播放失败');
+  // 先装好文本时间轴，音频开始时再 Play 口型
+  const voiceReady = lipSync.beginVoice(content, { id: `tts-${msgSeq == null ? Date.now() : msgSeq}` });
+  tts.audio.onended = () => {
+    lipSync.voiceStop();
     stopTtsPlayback();
   };
-  return tts.audio.play().catch(() => toast('播放失败'));
+  tts.audio.onerror = () => {
+    toast('播放失败');
+    lipSync.voiceStop();
+    stopTtsPlayback();
+  };
+  // 音频先播；口型时间轴就绪后再接入，并用 currentTime 立刻校准到正确位置
+  const playing = tts.audio.play();
+  if (tts.seekTimer) clearInterval(tts.seekTimer);
+  tts.seekTimer = setInterval(() => {
+    if (tts.kind !== 'plugin' || !tts.audio) return;
+    lipSync.voiceSeek(Number(tts.audio.currentTime) || 0);
+  }, 100);
+  void voiceReady.then((ok) => {
+    if (!ok || tts.kind !== 'plugin' || tts.muted) return;
+    lipSync.voicePlay('audio');
+    lipSync.voiceSeek(Number(tts.audio && tts.audio.currentTime) || 0);
+  });
+  return playing.catch(() => toast('播放失败'));
 }
 
 async function speakText(text, msgSeq = null, meta = {}) {
@@ -8005,7 +8073,7 @@ async function speakText(text, msgSeq = null, meta = {}) {
       else toast(reason);
       return;
     }
-    await speakWithPluginAudio(res, msgSeq);
+    await speakWithPluginAudio(res, msgSeq, content);
   } finally {
     tts.synthesizing = false;
   }
@@ -8062,6 +8130,70 @@ $('#set-auto-read').onchange = (e) => {
   toast(settings.autoRead ? '已开启自动朗读' : '已关闭自动朗读');
 };
 refreshTtsEngineStatus();
+
+// 嘴型同步：模式三档 + 强度 + 延迟；内核不支持时整体置灰
+const LIPSYNC_MODES = ['off', 'stream', 'voice'];
+const LIPSYNC_LABELS = ['关闭', '流式', '语音同步'];
+
+function syncLipSyncUi(state) {
+  const caps = state || lipSync.getCaps();
+  const supported = !!caps.supported;
+  const modeEl = $('#set-lipsync-mode');
+  const modeVal = $('#set-lipsync-mode-v');
+  const strengthEl = $('#set-lipsync-intensity');
+  const strengthVal = $('#set-lipsync-intensity-v');
+  const delayEl = $('#set-lipsync-delay');
+  const delayVal = $('#set-lipsync-delay-v');
+  const stateEl = $('#lipsync-state');
+  const idx = Math.max(0, LIPSYNC_MODES.indexOf(settings.lipSyncMode || 'off'));
+  if (modeEl) {
+    modeEl.value = String(idx);
+    modeEl.disabled = !supported;
+  }
+  if (modeVal) modeVal.textContent = LIPSYNC_LABELS[idx];
+  if (strengthEl) {
+    strengthEl.value = String(Number(settings.lipSyncIntensity) || 0.9);
+    strengthEl.disabled = !supported;
+  }
+  if (strengthVal) strengthVal.textContent = (Number(settings.lipSyncIntensity) || 0.9).toFixed(2);
+  if (delayEl) {
+    delayEl.value = String(Number(settings.lipSyncDelay) || 0);
+    delayEl.disabled = !supported;
+  }
+  if (delayVal) delayVal.textContent = `${Number(settings.lipSyncDelay) || 0}ms`;
+  if (stateEl) {
+    stateEl.textContent = supported
+      ? `已连接内核 · 口型 ${(caps.visemes || []).join(' / ')}`
+      : '当前内核不支持嘴型同步';
+    stateEl.classList.toggle('ok', supported);
+  }
+  for (const sel of ['#set-lipsync-mode', '#set-lipsync-intensity', '#set-lipsync-delay']) {
+    const el = $(sel);
+    const row = el && el.closest('.setting-row');
+    if (row) row.classList.toggle('is-disabled', !supported);
+  }
+}
+
+$('#set-lipsync-mode').oninput = (e) => {
+  const idx = clamp(Number(e.target.value) || 0, 0, 2);
+  settings.lipSyncMode = LIPSYNC_MODES[idx];
+  store.set('agentpet.settings', settings);
+  syncLipSyncUi();
+};
+
+$('#set-lipsync-intensity').oninput = (e) => {
+  settings.lipSyncIntensity = clamp(Number(e.target.value) || 0.9, 0.4, 1.2);
+  store.set('agentpet.settings', settings);
+  syncLipSyncUi();
+};
+
+$('#set-lipsync-delay').oninput = (e) => {
+  settings.lipSyncDelay = clamp(Number(e.target.value) || 0, -100, 100);
+  store.set('agentpet.settings', settings);
+  syncLipSyncUi();
+};
+
+syncLipSyncUi();
 
 // 「+」不再维护第二套菜单：直接复用斜杠指令面板，同一个浮层、同一套图标与交互
 let plusTogglePending = false;
