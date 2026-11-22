@@ -2233,8 +2233,13 @@ html[data-visual-off] .stage {
 }
 
 /* 三档分段控件（嘴型同步模式） */
-.seg-ctrl {
+.seg-ctrl,
+.setting-row > .seg-ctrl {
   display: inline-flex;
+  /* 覆盖 .setting-row > div 的竖排方向（权重必须高于它） */
+  flex-direction: row;
+  align-items: center;
+  flex: 0 0 auto;
   gap: 2px;
   padding: 3px;
   border-radius: 10px;
@@ -2244,6 +2249,7 @@ html[data-visual-off] .stage {
 
 .seg-btn {
   appearance: none;
+  flex: 0 0 auto;
   border: 0;
   background: none;
   padding: 6px 12px;
