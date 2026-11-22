@@ -3256,14 +3256,29 @@ let chatBusy = false;
 let chatSession = 0;
 let chatCancel = null;
 let chatRenderQueued = false;
+let chatRenderLast = 0;
+// 流式阶段每个 token 都会请求重绘；整棵树重建很贵，限量到约 12 次/秒，
+// 面板没打开时直接跳过（打开时会由 click 处理主动重绘一次）
+const CHAT_RENDER_MIN_MS = 80;
 
 function scheduleChatRender() {
   if (chatRenderQueued) return;
   chatRenderQueued = true;
-  requestAnimationFrame(() => {
+  const tick = () => {
+    if (!el.chatPanel.classList.contains('show')) {
+      chatRenderQueued = false;
+      return;
+    }
+    const now = performance.now();
+    if (now - chatRenderLast < CHAT_RENDER_MIN_MS) {
+      requestAnimationFrame(tick);
+      return;
+    }
     chatRenderQueued = false;
+    chatRenderLast = now;
     renderChat();
-  });
+  };
+  requestAnimationFrame(tick);
 }
 
 function setChatSending(on) {
