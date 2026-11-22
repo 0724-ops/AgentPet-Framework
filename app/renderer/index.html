@@ -762,9 +762,10 @@
             </div>
             <div class="setting-row">
               <div><b>同步模式</b><span id="lipsync-state">检测中…</span></div>
-              <div class="slider-wrap">
-                <input type="range" id="set-lipsync-mode" min="0" max="2" step="1" value="0" />
-                <b id="set-lipsync-mode-v">关闭</b>
+              <div class="seg-ctrl" id="set-lipsync-mode" role="group" aria-label="同步模式">
+                <button type="button" class="seg-btn" data-mode="off">关闭</button>
+                <button type="button" class="seg-btn" data-mode="stream">流式</button>
+                <button type="button" class="seg-btn" data-mode="voice">语音同步</button>
               </div>
             </div>
             <div class="setting-row">

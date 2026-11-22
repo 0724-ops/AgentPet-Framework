@@ -8133,13 +8133,11 @@ refreshTtsEngineStatus();
 
 // 嘴型同步：模式三档 + 强度 + 延迟；内核不支持时整体置灰
 const LIPSYNC_MODES = ['off', 'stream', 'voice'];
-const LIPSYNC_LABELS = ['关闭', '流式', '语音同步'];
 
 function syncLipSyncUi(state) {
   const caps = state || lipSync.getCaps();
   const supported = !!caps.supported;
   const modeEl = $('#set-lipsync-mode');
-  const modeVal = $('#set-lipsync-mode-v');
   const strengthEl = $('#set-lipsync-intensity');
   const strengthVal = $('#set-lipsync-intensity-v');
   const delayEl = $('#set-lipsync-delay');
@@ -8147,10 +8145,13 @@ function syncLipSyncUi(state) {
   const stateEl = $('#lipsync-state');
   const idx = Math.max(0, LIPSYNC_MODES.indexOf(settings.lipSyncMode || 'off'));
   if (modeEl) {
-    modeEl.value = String(idx);
-    modeEl.disabled = !supported;
+    modeEl.querySelectorAll('.seg-btn').forEach((btn, i) => {
+      const active = i === idx;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      btn.disabled = !supported;
+    });
   }
-  if (modeVal) modeVal.textContent = LIPSYNC_LABELS[idx];
   if (strengthEl) {
     strengthEl.value = String(Number(settings.lipSyncIntensity) || 0.9);
     strengthEl.disabled = !supported;
@@ -8174,9 +8175,12 @@ function syncLipSyncUi(state) {
   }
 }
 
-$('#set-lipsync-mode').oninput = (e) => {
-  const idx = clamp(Number(e.target.value) || 0, 0, 2);
-  settings.lipSyncMode = LIPSYNC_MODES[idx];
+$('#set-lipsync-mode').onclick = (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn || btn.disabled) return;
+  const mode = btn.dataset.mode;
+  if (!LIPSYNC_MODES.includes(mode)) return;
+  settings.lipSyncMode = mode;
   store.set('agentpet.settings', settings);
   syncLipSyncUi();
 };

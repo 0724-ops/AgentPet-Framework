@@ -2232,6 +2232,49 @@ html[data-visual-off] .stage {
   font-weight: 600;
 }
 
+/* 三档分段控件（嘴型同步模式） */
+.seg-ctrl {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.seg-btn {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+
+.seg-btn:hover {
+  color: var(--text-main);
+}
+
+.seg-btn.active {
+  background: var(--accent);
+  color: #08120f;
+}
+
+.seg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.seg-btn:focus-visible {
+  outline: 2px solid rgba(108, 140, 255, 0.55);
+  outline-offset: 1px;
+}
+
 .form-grid {
   display: grid;
   gap: 14px;
