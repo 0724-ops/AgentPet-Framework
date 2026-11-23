@@ -66,6 +66,7 @@ const settings = store.get('agentpet.settings', {
   lipSyncMode: 'off',
   lipSyncIntensity: 0.9,
   lipSyncDelay: 0,
+  lipSyncCatchUp: true,
   bloomOn: true,
   bloomStrength: 0.15,
   bloomThreshold: 0.8,
@@ -3127,7 +3128,26 @@ function shortImagePaths(text) {
   return out;
 }
 
-function renderChat() {
+// 对话面板只渲染最近 N 条：历史仍完整保存在 chatState / 磁盘里，
+// 只是不再把整段会话全部塞进 DOM（长会话下全量重建会明显拖慢流式）。
+const CHAT_RENDER_LIMIT = 30;
+const CHAT_RENDER_STEP = 10;
+// 用户点「加载更早」临时多渲染的条数；有新输出时归零，回到最近 30 条
+let chatRenderExtra = 0;
+
+// 便宜的可渲染判断，用于从尾部倒推窗口起点；真正渲染时仍会再过滤一次
+function chatRenderable(item) {
+  if (item.kind === 'compact') return true;
+  const m = item.m;
+  if (m.toolOnly) return false;
+  if (m.role === 'user' && /^\[系统信息\]/.test(String(m.text || '').trim())) return true;
+  if (m.role === 'ai' && !String(m.text || '').trim() && Array.isArray(m.toolCalls) && m.toolCalls.length) return false;
+  return true;
+}
+
+function renderChat(keepScroll = false) {
+  const prevScrollTop = el.chatHistory.scrollTop;
+  const prevScrollHeight = el.chatHistory.scrollHeight;
   el.chatHistory.innerHTML = '';
   const gateTime = timeGate();
   if (!chatState.messages.length && !chatState.cleared && !IS_PANEL) {
@@ -3152,25 +3172,48 @@ function renderChat() {
   });
   items.sort((a, b) => a.seq - b.seq || a.order - b.order);
 
-  items.forEach((item) => {
+  // 从尾部倒推窗口起点，只渲染最近 CHAT_RENDER_LIMIT 条可渲染记录
+  let startIdx = 0;
+  let shown = 0;
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (chatRenderable(items[i])) shown += 1;
+    if (shown >= CHAT_RENDER_LIMIT + chatRenderExtra) {
+      startIdx = i;
+      break;
+    }
+  }
+  if (startIdx > 0) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'chat-load-earlier';
+    more.textContent = '加载更早';
+    more.onclick = () => {
+      chatRenderExtra += CHAT_RENDER_STEP;
+      renderChat(true);
+    };
+    el.chatHistory.appendChild(more);
+  }
+
+  for (let i = startIdx; i < items.length; i += 1) {
+    const item = items[i];
     if (item.kind === 'compact') {
       const node = renderCompactNode(item.c, { showTime: false });
       node.classList.add('chat-fold');
       el.chatHistory.appendChild(node);
-      return;
+      continue;
     }
     const m = item.m;
-    if (m.toolOnly) return; // 纯工具轮次只进控制台
+    if (m.toolOnly) continue; // 纯工具轮次只进控制台
     // 以 [系统信息] 开头的用户消息（插件注入 / 待机唤醒）在聊天里折成一张小卡片，
     // 不当作自己说的话显示；原文进控制台和模型侧
     if (m.role === 'user' && /^\[系统信息\]/.test(String(m.text || '').trim())) {
       el.chatHistory.appendChild(buildSystemNotice(m));
-      return;
+      continue;
     }
     const bodyText = m.role === 'ai' ? tidyChatText(m.text) : String(m.text == null ? '' : m.text);
     // 历史记录里「只有空白正文 + 工具调用」的中间轮次也按纯工具轮次丢掉：
     // 否则聊天里会多出一个只剩朗读按钮的空气泡，还会多带一条「思考」行
-    if (m.role === 'ai' && !bodyText && Array.isArray(m.toolCalls) && m.toolCalls.length) return;
+    if (m.role === 'ai' && !bodyText && Array.isArray(m.toolCalls) && m.toolCalls.length) continue;
     const msg = document.createElement('div');
     msg.className = 'msg ' + (m.role === 'ai' ? 'ai' : m.role === 'sys' ? 'sys' : 'user');
     if (m.role === 'ai') {
@@ -3233,19 +3276,24 @@ function renderChat() {
         label.textContent = at;
         row.append(label, msg);
         el.chatHistory.appendChild(row);
-        return;
+        continue;
       }
     }
     el.chatHistory.appendChild(msg);
-  });
+  }
   refreshSpeakButtons();
-  el.chatHistory.scrollTop = el.chatHistory.scrollHeight;
+  // 加载更早时保持视口内容不跳；平时滚到底
+  el.chatHistory.scrollTop = keepScroll
+    ? el.chatHistory.scrollHeight - prevScrollHeight + prevScrollTop
+    : el.chatHistory.scrollHeight;
 }
 
 function pushChat(message) {
   chatState.cleared = false;
   const msg = { at: stamp(), ts: Date.now(), seq: nextSeq(), ...message };
   chatState.messages.push(msg);
+  chatRenderExtra = 0;
+  consoleRenderExtra = 0;
   saveChatSession();
   renderChat();
   scheduleConsoleRender();
@@ -5900,6 +5948,7 @@ async function runAgent() {
         toolCalls: [],
       };
       chatState.messages.push(msg);
+      chatRenderExtra = 0;
       scheduleConsoleRender();
       // 嘴型同步：模式在本条回复开始时锁定，中途切换设置只影响下一条
       lipSync.beginReply();
@@ -8157,6 +8206,7 @@ function syncLipSyncUi(state) {
   const strengthVal = $('#set-lipsync-intensity-v');
   const delayEl = $('#set-lipsync-delay');
   const delayVal = $('#set-lipsync-delay-v');
+  const catchEl = $('#set-lipsync-catchup');
   const stateEl = $('#lipsync-state');
   const idx = Math.max(0, LIPSYNC_MODES.indexOf(settings.lipSyncMode || 'off'));
   if (modeEl) {
@@ -8177,13 +8227,17 @@ function syncLipSyncUi(state) {
     delayEl.disabled = !supported;
   }
   if (delayVal) delayVal.textContent = `${Number(settings.lipSyncDelay) || 0}ms`;
+  if (catchEl) {
+    catchEl.checked = settings.lipSyncCatchUp !== false;
+    catchEl.disabled = !supported;
+  }
   if (stateEl) {
     stateEl.textContent = supported
       ? `已连接内核 · 口型 ${(caps.visemes || []).join(' / ')}`
       : '当前内核不支持嘴型同步';
     stateEl.classList.toggle('ok', supported);
   }
-  for (const sel of ['#set-lipsync-mode', '#set-lipsync-intensity', '#set-lipsync-delay']) {
+  for (const sel of ['#set-lipsync-mode', '#set-lipsync-intensity', '#set-lipsync-delay', '#set-lipsync-catchup']) {
     const el = $(sel);
     const row = el && el.closest('.setting-row');
     if (row) row.classList.toggle('is-disabled', !supported);
@@ -8208,6 +8262,12 @@ $('#set-lipsync-intensity').oninput = (e) => {
 
 $('#set-lipsync-delay').oninput = (e) => {
   settings.lipSyncDelay = clamp(Number(e.target.value) || 0, -100, 100);
+  store.set('agentpet.settings', settings);
+  syncLipSyncUi();
+};
+
+$('#set-lipsync-catchup').onchange = (e) => {
+  settings.lipSyncCatchUp = !!e.target.checked;
   store.set('agentpet.settings', settings);
   syncLipSyncUi();
 };
@@ -12365,18 +12425,36 @@ const consolePrefs = (() => {
 })();
 
 let consoleRenderQueued = false;
+let consoleRenderLast = 0;
+// 控制台条目多且流式期间一直在追加：默认只渲染最近 N 条，并限制重绘频率
+const CONSOLE_RENDER_MIN_MS = 80;
+const CONSOLE_RENDER_LIMIT = 60;
+const CONSOLE_RENDER_STEP = 40;
+let consoleRenderExtra = 0;
+
 function scheduleConsoleRender() {
   if (consoleRenderQueued) return;
   consoleRenderQueued = true;
-  requestAnimationFrame(() => {
-    consoleRenderQueued = false;
+  const tick = () => {
     // 面板窗口只有停在「控制台」页时才需要重绘，别让流式 token 拖累其它页
     const page = $('.settings-page.active');
     const visible =
       el.settingsPanel.classList.contains('show') &&
       (!IS_PANEL || (page && page.dataset.page === 'console'));
-    if (visible) renderConsole();
-  });
+    if (!visible) {
+      consoleRenderQueued = false;
+      return;
+    }
+    const now = performance.now();
+    if (now - consoleRenderLast < CONSOLE_RENDER_MIN_MS) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    consoleRenderQueued = false;
+    consoleRenderLast = now;
+    renderConsole();
+  };
+  requestAnimationFrame(tick);
 }
 
 function stamp() {
@@ -12887,20 +12965,37 @@ function mergedConsoleEntries() {
 function renderConsole() {
   const thread = el.consoleLog;
   if (!thread) return;
-  const stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
-  const entries = mergedConsoleEntries().filter((e) => {
+  const prevHeight = thread.scrollHeight;
+  const prevTop = thread.scrollTop;
+  const stick = prevHeight - prevTop - thread.clientHeight < 80;
+  const all = mergedConsoleEntries().filter((e) => {
     if (consolePrefs.showLogs) return true;
     // 关掉日志：对话、工具、压缩、提示词注入都不受影响，只收起过程日志，警告/错误始终保留
     if (e.kind !== 'system') return true;
     return !CONSOLE_QUIET_TAGS.has(e.tag);
   });
+  // 只渲染最近 N 条，历史仍可从顶部按钮往前翻
+  const startIdx = Math.max(0, all.length - (CONSOLE_RENDER_LIMIT + consoleRenderExtra));
   thread.innerHTML = '';
+  if (startIdx > 0) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'console-load-earlier';
+    more.textContent = '加载更早';
+    more.onclick = () => {
+      consoleRenderExtra += CONSOLE_RENDER_STEP;
+      renderConsole();
+    };
+    thread.appendChild(more);
+  }
   // 时间只标在用户请求上，同一分钟里连发的几条只留一次
   const gateTime = timeGate();
-  entries.forEach((entry) => {
+  for (let i = startIdx; i < all.length; i += 1) {
+    const entry = all[i];
     thread.appendChild(renderEntry(entry, { timeLabel: entry.kind === 'user' ? gateTime(entry) : '' }));
-  });
+  }
   if (stick) thread.scrollTop = thread.scrollHeight;
+  else thread.scrollTop = thread.scrollHeight - prevHeight + prevTop;
   updateConsoleJump();
   updateConsoleMeta();
 }
@@ -13600,6 +13695,7 @@ $('#btn-console-clear').onclick = () => {
     { kind: 'system', tag: '系统', text: '控制台已清空。', at: stamp(), ts: Date.now(), seq: nextSeq() },
   ];
   promptLog.length = 0;
+  consoleRenderExtra = 0;
   consoleState.rounds = 0;
   consoleState.tokens = 0;
   chatState.messages = [];

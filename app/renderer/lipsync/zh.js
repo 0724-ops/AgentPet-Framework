@@ -15,6 +15,13 @@ const FINAL_VISEME = {
   u: 'u', v: 'u', un: 'u', vn: 'u', ui: 'u',
 };
 
+// 复韵母的第二个口型：单给一个主元音会「一下到位」，补上收尾/介音的滑动更像说话
+const FINAL_GLIDE = {
+  ai: 'i', ei: 'i', ui: 'i',
+  ao: 'o', ou: 'u', iu: 'u', iou: 'u', iao: 'o',
+  ia: 'a', ie: 'e', ian: 'e', ua: 'a', uo: 'o', uai: 'i', ue: 'e', ve: 'e',
+};
+
 // 没有拼音库时的兜底：常用字韵母归类，保证功能不会整段失效
 const FALLBACK_FINAL = {
   的: 'e', 一: 'i', 是: 'i', 不: 'u', 了: 'e', 在: 'a', 人: 'e', 有: 'o',
@@ -130,7 +137,17 @@ export function finalToViseme(final) {
   return 'a';
 }
 
-// 中文段 → 音节列表：[{ char, initial, final, viseme, close }]
+// 韵母的收尾口型（无滑动时返回空串）
+export function finalGlide(final) {
+  const f = String(final || '')
+    .toLowerCase()
+    .replace(/ü/g, 'v')
+    .replace(/[1-5]/g, '')
+    .trim();
+  return FINAL_GLIDE[f] || '';
+}
+
+// 中文段 → 音节列表：[{ char, initial, final, viseme, glide, close }]
 export async function zhSyllables(text) {
   const chars = Array.from(String(text || ''));
   const lib = await loadPinyin();
@@ -139,7 +156,7 @@ export async function zhSyllables(text) {
       .filter((ch) => /[\u3400-\u9fff]/.test(ch))
       .map((ch) => {
         const f = FALLBACK_FINAL[ch] || 'a';
-        return { char: ch, initial: '', final: f, viseme: finalToViseme(f), close: false };
+        return { char: ch, initial: '', final: f, viseme: finalToViseme(f), glide: finalGlide(f), close: false };
       });
   }
   let finals = [];
@@ -162,6 +179,7 @@ export async function zhSyllables(text) {
       initial,
       final,
       viseme: finalToViseme(final),
+      glide: finalGlide(final),
       // b / p / m 起音先闭一下唇，口型更有「说话感」
       close: /^[bpm]$/i.test(initial),
     });

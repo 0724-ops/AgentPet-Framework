@@ -10,6 +10,11 @@ const now = () => (typeof performance !== 'undefined' && performance.now ? perfo
 
 const ZERO = [0, 0, 0, 0, 0];
 
+// 流式「最新优先」：积压超过 CATCHUP_LAG 就跳读，只保留 CATCHUP_KEEP 的前瞻缓冲
+const CATCHUP_LAG = 0.8;
+const CATCHUP_KEEP = 0.2;
+const CATCHUP_MIN_GAP = 0.45; // 两次跳读的最小间隔（秒），避免抖动
+
 function sampleAt(frames, t) {
   if (!frames || !frames.length) return ZERO;
   if (t <= frames[0].t) return frames[0].w;
@@ -55,7 +60,7 @@ export function createLipSyncEngine(deps = {}) {
     caps: probeLipSync(null),
     sender: null,
     reply: { active: false, closed: true, mode: 'off', id: '' },
-    stream: { buf: '', cursor: 0, startAt: 0, started: false, queue: Promise.resolve(), frames: [], timer: null },
+    stream: { buf: '', cursor: 0, startAt: 0, started: false, queue: Promise.resolve(), frames: [], timer: null, monitor: null, lastJumpAt: -1 },
     voice: null,
   };
 
@@ -112,6 +117,50 @@ export function createLipSyncEngine(deps = {}) {
       clearInterval(state.stream.timer);
       state.stream.timer = null;
     }
+    if (state.stream.monitor) {
+      clearInterval(state.stream.monitor);
+      state.stream.monitor = null;
+    }
+  }
+
+  function catchUpEnabled() {
+    return settings().lipSyncCatchUp !== false;
+  }
+
+  // 流式「最新优先」：嘴不再逐字念完，而是追内容前沿
+  function tickCatchUp() {
+    const s = state.stream;
+    if (!s.started || !state.reply.active) {
+      clearStreamTimer();
+      return;
+    }
+    const playT = (now() - s.startAt) / 1000;
+    const lag = s.cursor - playT;
+    if (!catchUpEnabled() || lag < CATCHUP_LAG) return;
+    if (s.lastJumpAt >= 0 && playT - s.lastJumpAt < CATCHUP_MIN_GAP) return;
+    s.lastJumpAt = playT;
+    if (!state.sender) return;
+
+    if (state.sender.mode === 'frames') {
+      // 内核按绝对时间播放：跳到已排内容的末端附近，中间那段直接跳过
+      if (!state.caps.seekable) return;
+      state.sender.seek(state.reply.id, Math.max(0, s.cursor - CATCHUP_KEEP));
+      return;
+    }
+
+    // 单通道降级：把缓冲重新对时，丢弃已被跳过的旧口型
+    const target = playT + CATCHUP_KEEP;
+    const shift = s.cursor - target;
+    if (shift <= 0) return;
+    s.frames = s.frames
+      .filter((f) => f.t - shift >= playT - 0.05)
+      .map((f) => ({ t: round3(f.t - shift), w: f.w }));
+    s.cursor = target;
+  }
+
+  function startStreamMonitor() {
+    if (state.stream.monitor || typeof setInterval !== 'function') return;
+    state.stream.monitor = setInterval(tickCatchUp, 100);
   }
 
   function beginReply() {
@@ -124,7 +173,7 @@ export function createLipSyncEngine(deps = {}) {
       mode: effective,
       id: `ls-${Date.now().toString(36)}`,
     };
-    state.stream = { buf: '', cursor: 0, startAt: 0, started: false, queue: Promise.resolve(), frames: [], timer: null };
+    state.stream = { buf: '', cursor: 0, startAt: 0, started: false, queue: Promise.resolve(), frames: [], timer: null, monitor: null, lastJumpAt: -1 };
   }
 
   function feedText(chunk) {
@@ -151,6 +200,7 @@ export function createLipSyncEngine(deps = {}) {
         state.sender.play(state.reply.id);
       }
       if (state.sender && state.sender.mode === 'mouth') startStreamMouth();
+      startStreamMonitor();
     }
     const arrival = Math.max(0, (now() - state.stream.startAt) / 1000);
     // 文本比嘴快、积压超过 250ms：本段最多 1.6 倍速追平
@@ -351,7 +401,7 @@ export function createLipSyncEngine(deps = {}) {
     }
     state.voice = null;
     state.reply = { active: false, closed: true, mode: 'off', id: '' };
-    state.stream = { buf: '', cursor: 0, startAt: 0, started: false, queue: Promise.resolve(), frames: [], timer: null };
+    state.stream = { buf: '', cursor: 0, startAt: 0, started: false, queue: Promise.resolve(), frames: [], timer: null, monitor: null, lastJumpAt: -1 };
   }
 
   return {

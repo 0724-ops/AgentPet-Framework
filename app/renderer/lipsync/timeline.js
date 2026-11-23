@@ -48,19 +48,43 @@ export async function analyzeText(text, opts = {}) {
 }
 
 function envelope(local, dur) {
-  const attack = Math.min(0.06, dur * 0.4);
-  const release = Math.min(0.09, dur * 0.45);
-  if (local < attack) return attack > 0 ? local / attack : 1;
+  const attack = Math.min(0.055, dur * 0.35);
+  const release = Math.min(0.085, dur * 0.45);
+  const smooth = (x) => {
+    const t = clamp(x, 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  if (local < attack) return attack > 0 ? smooth(local / attack) : 1;
   const remain = dur - local;
-  if (remain < release) return release > 0 ? Math.max(0, remain / release) : 0;
+  if (remain < release) return release > 0 ? smooth(Math.max(0, remain / release)) : 0;
   return 1;
+}
+
+// 零相位双向平滑：正向 + 反向各低通一次，既没有单向滤波的滞后，
+// 又让权重曲线的一阶/二阶导连续，嘴形加减速不再一段一段地硬拐。
+function smoothTrack(raw, step, tau = 0.04) {
+  const n = raw.length;
+  if (!n) return raw;
+  const a = 1 - Math.exp(-step / tau);
+  const fwd = new Array(n);
+  let prev = raw[0].slice();
+  for (let i = 0; i < n; i += 1) {
+    prev = prev.map((v, k) => v + a * (raw[i][k] - v));
+    fwd[i] = prev.slice();
+  }
+  const out = new Array(n);
+  let next = fwd[n - 1].slice();
+  for (let i = n - 1; i >= 0; i -= 1) {
+    next = next.map((v, k) => v + a * (fwd[i][k] - v));
+    out[i] = next.map((v) => (v < 0.012 ? 0 : Math.min(1, v)));
+  }
+  return out;
 }
 
 function sampleFrames(targets, total) {
   const step = total > 90 ? 0.06 : FRAME_STEP;
-  const frames = [];
-  let prev = [0, 0, 0, 0, 0];
   const count = Math.min(Math.ceil(total / step) + 1, MAX_FRAMES);
+  const raw = [];
 
   for (let n = 0; n < count; n += 1) {
     const t = n * step;
@@ -77,11 +101,12 @@ function sampleFrames(targets, total) {
       if (idx >= 0) weights[idx] = Math.max(weights[idx], (target.w || 1) * env);
     }
     if (closing) weights.fill(0);
-    // 轻度时间平滑，避免逐帧跳变；内核只做插值，不再改总时长
-    const smoothed = weights.map((x, i) => prev[i] * 0.35 + x * 0.65);
-    prev = smoothed;
-    frames.push({ t: round3(t), w: smoothed.map(round3) });
+    raw.push(weights);
   }
+
+  // 平滑放在采样之后统一做：同帧多基元（协同发音）先叠加，再一起过渡
+  const smoothed = smoothTrack(raw, step);
+  const frames = smoothed.map((w, n) => ({ t: round3(n * step), w: w.map(round3) }));
 
   // 收尾：删掉末尾连续闭嘴的空帧，保留一小段自然闭合
   while (frames.length > 1) {
@@ -110,12 +135,20 @@ export function scheduleUnits(units, opts = {}) {
     }
     if (unit.type === 'zh') {
       const dur = ZH_SYLLABLE * factor;
-      if (unit.close) {
-        targets.push({ start: t, dur: 0.045 * factor, close: true });
-        t += 0.045 * factor;
+      const onset = unit.close ? 0.04 * factor : 0;
+      if (onset) targets.push({ start: t, dur: onset, close: true });
+      // 开唇略早于闭唇结束，避免「闭死 → 弹开」的硬切
+      const vStart = t + onset * 0.6;
+      const glide = unit.glide && unit.glide !== unit.viseme ? unit.glide : '';
+      if (glide) {
+        // 复韵母拆成「主元音 → 收尾」两段，后段与前段重叠，形成自然滑动
+        targets.push({ start: vStart, dur: dur * 0.62, v: unit.viseme, w: 1 });
+        targets.push({ start: vStart + dur * 0.4, dur: dur * 0.64, v: glide, w: 0.9 });
+      } else {
+        targets.push({ start: vStart, dur, v: unit.viseme, w: 1 });
       }
-      targets.push({ start: t, dur, v: unit.viseme, w: 1 });
-      t += dur * 0.9; // 邻接音节重叠约 30ms
+      // 与下一音节留约 15% 重叠：相邻音素同时有权重，嘴形互相带一下
+      t = vStart + dur * 0.86;
       continue;
     }
     if (unit.type === 'en') {

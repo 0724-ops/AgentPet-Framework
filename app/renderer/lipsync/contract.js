@@ -14,6 +14,7 @@ const EMPTY_CAPS = {
   maxIntensity: 1.2,
   latencyMs: 0,
   declared: false,
+  seekable: false,
 };
 
 export function probeLipSync(pet) {
@@ -55,6 +56,8 @@ export function probeLipSync(pet) {
     maxIntensity: Number(info && info.maxIntensity) || 1.2,
     latencyMs: Number(info && info.latencyMs) || 0,
     declared: !!info,
+    // 支持 seek 才能做流式「跳读追赶」；没有就只能按原速播放
+    seekable: hasFrames && typeof pet.lipSyncSeek === 'function',
   };
 }
 

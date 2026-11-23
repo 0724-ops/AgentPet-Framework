@@ -4636,6 +4636,28 @@ html[data-visual-off] .stage {
   margin: -6px 0;
 }
 
+/* 长会话默认只渲染最近 N 条；顶部的「加载更早」按钮 */
+.chat-history > .chat-load-earlier,
+.dsh-thread > .console-load-earlier {
+  display: block;
+  margin: 2px auto;
+  padding: 4px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.chat-history > .chat-load-earlier:hover,
+.dsh-thread > .console-load-earlier:hover {
+  color: var(--text-main);
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.35);
+}
+
 /* 压缩失败：整行标红，一眼能看出这次压缩没成 */
 .dsh-compact.is-error summary {
   color: #f08d8d;
